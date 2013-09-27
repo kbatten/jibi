@@ -36,6 +36,8 @@ type cpu struct {
 
 	di int
 	ei int
+
+	cur []uint8
 }
 
 const (
@@ -52,7 +54,7 @@ const (
 
 func newCpu(rom []uint8) *cpu {
 	ram := make([]uint8, 65536)
-	hz := 1.0 //1.05e6
+	hz := 1.05e6
 	period := time.Duration(1e9 / hz)
 	clock := time.Tick(period)
 
@@ -60,8 +62,13 @@ func newCpu(rom []uint8) *cpu {
 }
 
 func (c *cpu) String() string {
-	return fmt.Sprintf("a:%v b:%v c:%v d:%v e:%v f:%v h:%v l:%v sp:%v pc:%v",
-		c.a, c.b, c.c, c.d, c.e, c.f, c.h, c.l, c.sp, c.pc)
+	r := "[ "
+	for _, h := range c.cur {
+		r += fmt.Sprintf("%02X ", h)
+	}
+
+	return fmt.Sprintf("%s] a:%v b:%v c:%v d:%v e:%v f:%v h:%v l:%v sp:%v pc:%v",
+		r, c.a, c.b, c.c, c.d, c.e, c.f, c.h, c.l, c.sp, c.pc)
 }
 
 func (c *cpu) readPc() uint8 {
@@ -69,6 +76,12 @@ func (c *cpu) readPc() uint8 {
 	c.cycles++
 	r := c.rom[c.pc]
 	c.pc++
+
+	if c.cycles == 1 {
+		c.cur = nil
+	}
+	c.cur = append(c.cur, r)
+
 	return r
 }
 
@@ -84,6 +97,13 @@ func (c *cpu) writeByte(ms, ls, b uint8) {
 	c.cycles++
 	addr := uint16(ms)<<8 + uint16(ls)
 	c.ram[addr] = b
+}
+
+// hl = ab + xy
+func (c *cpu) addWord(a, b, x, y uint8) (uint8, uint8) {
+	l := c.add(b, y)
+	h := c.addC(a, x)
+	return h, l
 }
 
 func (c *cpu) subWord(a uint16, b uint16) uint16 {
@@ -105,6 +125,40 @@ func (c *cpu) disableInterrupts() {
 
 func (c *cpu) enableInterrupts() {
 	//TODO: implement
+}
+
+func (c *cpu) rr(n uint8) uint8 {
+	// TODO: verify
+	r := n >> 1
+	c.f = 0
+	if r == 0 {
+		c.f |= flagZSet
+	}
+	return r
+}
+
+func (c *cpu) rlc(n uint8) uint8 {
+	// TODO: verify
+	<-c.clock
+	c.cycles++
+	r := n<<1 + n>>7
+	c.f = 0
+	if r == 0 {
+		c.f |= flagZSet
+	}
+	if n>>7 == 1 {
+		c.f |= flagCSet
+	}
+	return r
+}
+
+func (c *cpu) xor(a, b uint8) uint8 {
+	r := a ^ b
+	c.f = 0
+	if r == 0 {
+		c.f |= flagZSet
+	}
+	return r
 }
 
 func (c *cpu) add(a, b uint8) uint8 {
@@ -201,6 +255,11 @@ func (c *cpu) push(b uint8) {
 	c.sp--
 }
 
+func (c *cpu) pushNoClock(b uint8) {
+	c.ram[c.sp] = b
+	c.sp--
+}
+
 func (c *cpu) pop() uint8 {
 	c.sp++
 	r := c.readByte(uint8(c.sp>>8), uint8(c.sp&0xFF))
@@ -268,7 +327,7 @@ func main() {
 	c := newCpu(rom)
 
 	// main loop
-	startTime := time.Now()
+	//startTime := time.Now()
 	for {
 		opcode := c.readPc()
 		switch opcode {
@@ -284,12 +343,16 @@ func main() {
 			c.cycles++
 		case 0x06: // LD B, n
 			c.b = c.readPc()
+		case 0x07: // RLC A
+			c.a = c.rlc(c.a)
 		case 0x08: // LD (nn), SP
 			l := c.readPc()
 			h := c.readPc()
 			c.writeByte(h, l, uint8(c.sp&0xFF))
 			h, l = increment(h, l)
 			c.writeByte(h, l, uint8(c.sp>>8))
+		case 0x09: // ADD HL, BC
+			c.h, c.l = c.addWord(c.h, c.l, c.b, c.c)
 		case 0x0A: // LD A, (BC)
 			c.a = c.readByte(c.b, c.c)
 		case 0x0E: // LD C, n
@@ -301,10 +364,26 @@ func main() {
 			c.writeByte(c.d, c.e, c.a)
 		case 0x16: // LD D, n
 			c.d = c.readPc()
+		case 0x18: // JR n
+			n := int8(c.readPc())
+			if n < 0 {
+				c.pc -= uint16(-n)
+			} else {
+				c.pc += uint16(n)
+			}
+		case 0x19: // ADD HL, DE
+			c.h, c.l = c.addWord(c.h, c.l, c.d, c.e)
 		case 0x1A: // LD A, (DE)
 			c.a = c.readByte(c.d, c.e)
 		case 0x1E: // LD E, n
 			c.e = c.readPc()
+		case 0x1F: // RRA
+			c.a = c.rr(c.a)
+		case 0x20: // JR NZ, *
+			n := c.readPc()
+			if c.f&flagZSet == 0 {
+				c.pc += uint16(n)
+			}
 		case 0x21: // LD HL, nn
 			c.l = c.readPc()
 			c.h = c.readPc()
@@ -313,11 +392,23 @@ func main() {
 			c.h, c.l = increment(c.h, c.l)
 		case 0x26: // LD H, n
 			c.h = c.readPc()
+		case 0x28: // JR Z, *
+			n := c.readPc()
+			if c.f&flagZSet == flagZSet {
+				c.pc += uint16(n)
+			}
+		case 0x29: // ADD HL, HL
+			c.h, c.l = c.addWord(c.h, c.l, c.h, c.l)
 		case 0x2A: // LDI A, (HL)
 			c.a = c.readByte(c.h, c.l)
 			c.h, c.l = increment(c.h, c.l)
 		case 0x2E: // LD L, n
 			c.l = c.readPc()
+		case 0x30: // JR NC, *
+			n := c.readPc()
+			if c.f&flagCSet == 0 {
+				c.pc += uint16(n)
+			}
 		case 0x31: // LD SP, nn
 			l := c.readPc()
 			h := c.readPc()
@@ -327,6 +418,13 @@ func main() {
 			c.h, c.l = decrement(c.h, c.l)
 		case 0x36: // LD (HL), n
 			c.writeByte(c.h, c.l, c.readPc())
+		case 0x38: // JR C, *
+			n := c.readPc()
+			if c.f&flagCSet == flagCSet {
+				c.pc += uint16(n)
+			}
+		case 0x39: // ADD HL, SP
+			c.h, c.l = c.addWord(c.h, c.l, uint8(c.sp>>8), uint8(c.sp&0xFF))
 		case 0x3A: // LDD A, (HL)
 			c.a = c.readByte(c.h, c.l)
 			c.h, c.l = decrement(c.h, c.l)
@@ -538,6 +636,22 @@ func main() {
 			c.a = c.and(c.a, c.readByte(c.h, c.l))
 		case 0xA7: // AND A
 			c.a = c.and(c.a, c.a)
+		case 0xA8: // XOR B
+			c.a = c.xor(c.a, c.b)
+		case 0xA9: // XOR C
+			c.a = c.xor(c.a, c.c)
+		case 0xAA: // XOR D
+			c.a = c.xor(c.a, c.d)
+		case 0xAB: // XOR E
+			c.a = c.xor(c.a, c.e)
+		case 0xAC: // XOR H
+			c.a = c.xor(c.a, c.h)
+		case 0xAD: // XOR L
+			c.a = c.xor(c.a, c.l)
+		case 0xAE: // XOR (HL)
+			c.a = c.xor(c.a, c.readByte(c.h, c.l))
+		case 0xAF: // XOR A
+			c.a = c.xor(c.a, c.a)
 		case 0xB0: // OR B
 			c.a = c.or(c.a, c.b)
 		case 0xB1: // OR C
@@ -554,6 +668,22 @@ func main() {
 			c.a = c.or(c.a, c.readByte(c.h, c.l))
 		case 0xB7: // OR A
 			c.a = c.or(c.a, c.a)
+		case 0xB8: // CP B
+			c.sub(c.a, c.b)
+		case 0xB9: // CP B
+			c.sub(c.a, c.b)
+		case 0xBA: // CP C
+			c.sub(c.a, c.c)
+		case 0xBB: // CP D
+			c.sub(c.a, c.d)
+		case 0xBC: // CP E
+			c.sub(c.a, c.e)
+		case 0xBD: // CP H
+			c.sub(c.a, c.h)
+		case 0xBE: // CP L
+			c.sub(c.a, c.l)
+		case 0xBF: // CP (HL)
+			c.sub(c.a, c.readByte(c.h, c.l))
 		case 0xC1: // POP BC
 			c.c = c.pop()
 			c.b = c.pop()
@@ -568,6 +698,12 @@ func main() {
 			c.cycles++
 		case 0xC6: // ADD A, #
 			c.a = c.add(c.a, c.readPc())
+		case 0xCD: // CALL nn
+			l := c.readPc()
+			h := c.readPc()
+			c.pushNoClock(uint8(c.pc >> 8))
+			c.pushNoClock(uint8(c.pc & 0xFF))
+			c.pc = uint16(h)<<8 + uint16(l)
 		case 0xCE: // ADC A, #
 			c.a = c.addC(c.a, c.readPc())
 		case 0xD1: // POP DE
@@ -601,6 +737,9 @@ func main() {
 			l := c.readPc()
 			h := c.readPc()
 			c.writeByte(h, l, c.a)
+		case 0xEE: // XOR #
+			n := c.readPc()
+			c.a = c.xor(c.a, n)
 		case 0xF0: // LDH A, (n)
 			n := c.readPc()
 			c.a = c.readByte(0xFF, n)
@@ -635,8 +774,10 @@ func main() {
 			c.a = c.readByte(h, l)
 		case 0xFB: // EI
 			c.ei = 3 // enable interrupts after next instruction
+		case 0xFE: // CP #
+			c.sub(c.a, c.readPc())
 		default:
-			panic(fmt.Sprintf("unknown opcode 0x%X", opcode))
+			panic(fmt.Sprintf("unknown opcode 0x%02X", opcode))
 		}
 
 		if c.di > 0 {
@@ -653,12 +794,12 @@ func main() {
 			c.enableInterrupts()
 		}
 
-		period := time.Since(startTime)
-		startTime = time.Now()
+		//period := time.Since(startTime)
+		//startTime = time.Now()
 		//mhz := 1e3 * float64(c.cycles) / float64(period)
 
 		//if c.pc == 0 {
-		fmt.Printf("0x%X %v %v\n", opcode, c, period)
+		fmt.Println(c, c.cycles)
 		//}
 
 		c.cycles = 0
