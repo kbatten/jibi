@@ -1,8 +1,14 @@
 package main
 
 import (
+	"archive/zip"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"strings"
 	"time"
+
+	docopt "github.com/docopt/docopt.go"
 )
 
 // 1 machine cycle = 4 clock cycles
@@ -27,6 +33,9 @@ type cpu struct {
 
 	clock  <-chan time.Time
 	cycles uint8
+
+	di int
+	ei int
 }
 
 const (
@@ -42,14 +51,12 @@ const (
 )
 
 func newCpu(rom []uint8) *cpu {
-	romFull := make([]uint8, 256)
-	copy(romFull, rom)
 	ram := make([]uint8, 65536)
-	hz := 1.05e6
+	hz := 1.0 //1.05e6
 	period := time.Duration(1e9 / hz)
 	clock := time.Tick(period)
 
-	return &cpu{sp: 0xFFFE, rom: romFull, ram: ram, period: period, clock: clock}
+	return &cpu{sp: 0xFFFE, rom: rom, ram: ram, period: period, clock: clock}
 }
 
 func (c *cpu) String() string {
@@ -58,7 +65,9 @@ func (c *cpu) String() string {
 }
 
 func (c *cpu) readPc() uint8 {
-	r := c.readByte(uint8(c.pc>>8), uint8(c.pc&0xFF))
+	<-c.clock
+	c.cycles++
+	r := c.rom[c.pc]
 	c.pc++
 	return r
 }
@@ -67,9 +76,6 @@ func (c *cpu) readByte(ms, ls uint8) uint8 {
 	<-c.clock
 	c.cycles++
 	addr := uint16(ms)<<8 + uint16(ls)
-	if addr < 256 {
-		return c.rom[addr]
-	}
 	return c.ram[addr]
 }
 
@@ -91,6 +97,14 @@ func (c *cpu) addSigned(a uint16, b int8) uint16 {
 	}
 	//TODO: set flags
 	return a + uint16(b)
+}
+
+func (c *cpu) disableInterrupts() {
+	//TODO: implement
+}
+
+func (c *cpu) enableInterrupts() {
+	//TODO: implement
 }
 
 func (c *cpu) add(a, b uint8) uint8 {
@@ -203,8 +217,55 @@ func increment(ms, ls uint8) (uint8, uint8) {
 	return uint8(addr >> 8), uint8(addr & 0xFF)
 }
 
+func loadRomZip(fn string) []uint8 {
+	r, err := zip.OpenReader(fn)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer r.Close()
+	for _, f := range r.File {
+		if strings.HasSuffix(f.Name, ".gb") {
+			rc, err := f.Open()
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer rc.Close()
+			buf, err := ioutil.ReadAll(rc)
+			if err != nil {
+				log.Fatal(err)
+			}
+			r := make([]uint8, len(buf))
+			for i, b := range buf {
+				r[i] = uint8(b)
+			}
+			return r
+		}
+	}
+	return []uint8{}
+}
+
+func loadRom(fn string) []uint8 {
+	if strings.HasSuffix(fn, ".zip") {
+		return loadRomZip(fn)
+	}
+	buf, err := ioutil.ReadFile(fn)
+	if err != nil {
+		log.Fatal(err)
+	}
+	r := make([]uint8, len(buf))
+	for i, b := range buf {
+		r[i] = uint8(b)
+	}
+	return r
+}
+
 func main() {
-	c := newCpu([]uint8{0x06, 55, 0x0A, 0x7e, 0x22, 0x03, 0xF5, 0x0A, 0xF1, 0x80, 0xFF})
+	doc := `usage: cpu <rom>`
+	args, _ := docopt.Parse(doc, nil, true, "", false)
+
+	rom := loadRom(args["<rom>"].(string))
+
+	c := newCpu(rom)
 
 	// main loop
 	startTime := time.Now()
@@ -496,6 +557,10 @@ func main() {
 		case 0xC1: // POP BC
 			c.c = c.pop()
 			c.b = c.pop()
+		case 0xC3: // JP nn
+			l := c.readPc()
+			h := c.readPc()
+			c.pc = uint16(h)<<8 + uint16(l)
 		case 0xC5: // PUSH BC
 			c.push(c.b)
 			c.push(c.c)
@@ -544,6 +609,8 @@ func main() {
 			c.a = c.pop()
 		case 0xF2: // LD A, (C)
 			c.a = c.readByte(0xFF, c.c)
+		case 0xF3: // DI
+			c.di = 3 // disable interrupts after next instruction
 		case 0xF5: // PUSH AF
 			c.push(c.a)
 			c.push(c.f)
@@ -566,15 +633,32 @@ func main() {
 			l := c.readPc()
 			h := c.readPc()
 			c.a = c.readByte(h, l)
+		case 0xFB: // EI
+			c.ei = 3 // enable interrupts after next instruction
 		default:
 			panic(fmt.Sprintf("unknown opcode 0x%X", opcode))
 		}
+
+		if c.di > 0 {
+			c.di--
+		}
+		if c.di == 1 {
+			c.disableInterrupts()
+		}
+
+		if c.ei > 0 {
+			c.ei--
+		}
+		if c.ei == 1 {
+			c.enableInterrupts()
+		}
+
 		period := time.Since(startTime)
 		startTime = time.Now()
 		//mhz := 1e3 * float64(c.cycles) / float64(period)
 
 		//if c.pc == 0 {
-		fmt.Println(c, period)
+		fmt.Printf("0x%X %v %v\n", opcode, c, period)
 		//}
 
 		c.cycles = 0
