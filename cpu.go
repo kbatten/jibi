@@ -45,7 +45,7 @@ func newCpu(rom []uint8) *cpu {
 	romFull := make([]uint8, 256)
 	copy(romFull, rom)
 	ram := make([]uint8, 65536)
-	hz := 1.0 //1.05e6
+	hz := 1.05e6
 	period := time.Duration(1e9 / hz)
 	clock := time.Tick(period)
 
@@ -55,14 +55,6 @@ func newCpu(rom []uint8) *cpu {
 func (c *cpu) String() string {
 	return fmt.Sprintf("a:%v b:%v c:%v d:%v e:%v f:%v h:%v l:%v sp:%v pc:%v",
 		c.a, c.b, c.c, c.d, c.e, c.f, c.h, c.l, c.sp, c.pc)
-}
-
-func (c *cpu) execute(instruction []uint8) {
-}
-
-// can update pc
-func (c *cpu) decode(opcode uint8) []uint8 {
-	return []uint8{}
 }
 
 func (c *cpu) readPc() uint8 {
@@ -88,22 +80,117 @@ func (c *cpu) writeByte(ms, ls, b uint8) {
 	c.ram[addr] = b
 }
 
-func (c *cpu) sub(a uint16, b uint16) uint16 {
+func (c *cpu) subWord(a uint16, b uint16) uint16 {
 	//TODO: set flags
 	return a - b
 }
 
-func (c *cpu) add(a uint16, b int8) uint16 {
+func (c *cpu) addSigned(a uint16, b int8) uint16 {
 	if b < 0 {
-		return c.sub(a, uint16(-b))
+		return c.subWord(a, uint16(-b))
 	}
 	//TODO: set flags
 	return a + uint16(b)
 }
 
+func (c *cpu) add(a, b uint8) uint8 {
+	r := a + b
+	c.f = 0
+	if r == 0 {
+		c.f |= flagZSet
+	}
+	if a&0x0F+b&0x0F > 0x0F {
+		c.f |= flagHSet
+	}
+	if uint16(a)+uint16(b) > 0xFF {
+		c.f |= flagCSet
+	}
+	return r
+}
+
+func (c *cpu) addC(a, b uint8) uint8 {
+	carry := uint8(0)
+	if c.f&flagCSet > 0 {
+		carry = 1
+	}
+	r := a + b + carry
+	c.f = 0
+	if r == 0 {
+		c.f |= flagZSet
+	}
+	if a&0x0F+b&0x0F+carry > 0x0F {
+		c.f |= flagHSet
+	}
+	if uint16(a)+uint16(b)+uint16(carry) > 0xFF {
+		c.f |= flagCSet
+	}
+	return r
+}
+
+func (c *cpu) sub(a, b uint8) uint8 {
+	r := a - b
+	c.f = 0
+	if r == 0 {
+		c.f |= flagZSet
+	}
+	c.f |= flagNSet
+	if a&0x0F >= b&0x0F {
+		c.f |= flagHSet
+	}
+	if a >= b {
+		c.f |= flagCSet
+	}
+	return r
+}
+
+func (c *cpu) subC(a, b uint8) uint8 {
+	carry := uint8(0)
+	if c.f&flagCSet > 0 {
+		carry = 1
+	}
+	r := a - b - carry
+	c.f = 0
+	if r == 0 {
+		c.f |= flagZSet
+	}
+	c.f |= flagNSet
+	if a&0x0F >= (b&0x0F + carry) {
+		c.f |= flagHSet
+	}
+	if a >= (b + carry) {
+		c.f |= flagCSet
+	}
+	return r
+}
+
+func (c *cpu) and(a, b uint8) uint8 {
+	r := a & b
+	c.f = 0
+	if r == 0 {
+		c.f |= flagZSet
+	}
+	c.f |= flagHSet
+	return r
+}
+
+func (c *cpu) or(a, b uint8) uint8 {
+	r := a | b
+	c.f = 0
+	if r == 0 {
+		c.f |= flagZSet
+	}
+	return r
+}
+
 func (c *cpu) push(b uint8) {
 	c.writeByte(uint8(c.sp>>8), uint8(c.sp&0xFF), b)
 	c.sp--
+}
+
+func (c *cpu) pop() uint8 {
+	c.sp++
+	r := c.readByte(uint8(c.sp>>8), uint8(c.sp&0xFF))
+	return r
 }
 
 func decrement(ms, ls uint8) (uint8, uint8) {
@@ -117,7 +204,7 @@ func increment(ms, ls uint8) (uint8, uint8) {
 }
 
 func main() {
-	c := newCpu([]uint8{0x06, 55, 0x0A, 0x7e, 0x22, 0x03, 0xF5})
+	c := newCpu([]uint8{0x06, 55, 0x0A, 0x7e, 0x22, 0x03, 0xF5, 0x0A, 0xF1, 0x80, 0xFF})
 
 	// main loop
 	startTime := time.Now()
@@ -310,19 +397,132 @@ func main() {
 			c.a = c.readByte(c.h, c.l)
 		case 0x7F: // LD A, A
 			c.a = c.a
+		case 0x80: // ADD A, B
+			c.a = c.add(c.a, c.b)
+		case 0x81: // ADD A, C
+			c.a = c.add(c.a, c.c)
+		case 0x82: // ADD A, D
+			c.a = c.add(c.a, c.d)
+		case 0x83: // ADD A, E
+			c.a = c.add(c.a, c.e)
+		case 0x84: // ADD A, H
+			c.a = c.add(c.a, c.h)
+		case 0x85: // ADD A, L
+			c.a = c.add(c.a, c.l)
+		case 0x86: // ADD A, (HL)
+			c.a = c.add(c.a, c.readByte(c.h, c.l))
+		case 0x87: // ADD A, A
+			c.a = c.add(c.a, c.a)
+		case 0x88: // ADC A, B
+			c.a = c.addC(c.a, c.b)
+		case 0x89: // ADC A, C
+			c.a = c.addC(c.a, c.c)
+		case 0x8A: // ADC A, D
+			c.a = c.addC(c.a, c.d)
+		case 0x8B: // ADC A, E
+			c.a = c.addC(c.a, c.e)
+		case 0x8C: // ADC A, H
+			c.a = c.addC(c.a, c.h)
+		case 0x8D: // ADC A, L
+			c.a = c.addC(c.a, c.l)
+		case 0x8E: // ADC A, (HL)
+			c.a = c.addC(c.a, c.readByte(c.h, c.l))
+		case 0x8F: // ADC A, A
+			c.a = c.addC(c.a, c.a)
+		case 0x90: // SUB A, B
+			c.a = c.sub(c.a, c.b)
+		case 0x91: // SUB A, C
+			c.a = c.sub(c.a, c.c)
+		case 0x92: // SUB A, D
+			c.a = c.sub(c.a, c.d)
+		case 0x93: // SUB A, E
+			c.a = c.sub(c.a, c.e)
+		case 0x94: // SUB A, H
+			c.a = c.sub(c.a, c.h)
+		case 0x95: // SUB A, L
+			c.a = c.sub(c.a, c.l)
+		case 0x96: // SUB A, (HL)
+			c.a = c.sub(c.a, c.readByte(c.h, c.l))
+		case 0x97: // SUB A, A
+			c.a = c.sub(c.a, c.a)
+		case 0x98: // SBC A, B
+			c.a = c.subC(c.a, c.b)
+		case 0x99: // SBC A, C
+			c.a = c.subC(c.a, c.c)
+		case 0x9A: // SBC A, D
+			c.a = c.subC(c.a, c.d)
+		case 0x9B: // SBC A, E
+			c.a = c.subC(c.a, c.e)
+		case 0x9C: // SBC A, H
+			c.a = c.subC(c.a, c.h)
+		case 0x9D: // SBC A, L
+			c.a = c.subC(c.a, c.l)
+		case 0x9E: // SBC A, (HL)
+			c.a = c.subC(c.a, c.readByte(c.h, c.l))
+		case 0x9F: // SBC A, A
+			c.a = c.subC(c.a, c.a)
+		case 0xA0: // AND B
+			c.a = c.and(c.a, c.b)
+		case 0xA1: // AND C
+			c.a = c.and(c.a, c.c)
+		case 0xA2: // AND D
+			c.a = c.and(c.a, c.d)
+		case 0xA3: // AND E
+			c.a = c.and(c.a, c.e)
+		case 0xA4: // AND H
+			c.a = c.and(c.a, c.h)
+		case 0xA5: // AND L
+			c.a = c.and(c.a, c.l)
+		case 0xA6: // AND (HL)
+			c.a = c.and(c.a, c.readByte(c.h, c.l))
+		case 0xA7: // AND A
+			c.a = c.and(c.a, c.a)
+		case 0xB0: // OR B
+			c.a = c.or(c.a, c.b)
+		case 0xB1: // OR C
+			c.a = c.or(c.a, c.c)
+		case 0xB2: // OR D
+			c.a = c.or(c.a, c.d)
+		case 0xB3: // OR E
+			c.a = c.or(c.a, c.e)
+		case 0xB4: // OR H
+			c.a = c.or(c.a, c.h)
+		case 0xB5: // OR L
+			c.a = c.or(c.a, c.l)
+		case 0xB6: // OR (HL)
+			c.a = c.or(c.a, c.readByte(c.h, c.l))
+		case 0xB7: // OR A
+			c.a = c.or(c.a, c.a)
+		case 0xC1: // POP BC
+			c.c = c.pop()
+			c.b = c.pop()
 		case 0xC5: // PUSH BC
 			c.push(c.b)
 			c.push(c.c)
 			<-c.clock
 			c.cycles++
+		case 0xC6: // ADD A, #
+			c.a = c.add(c.a, c.readPc())
+		case 0xCE: // ADC A, #
+			c.a = c.addC(c.a, c.readPc())
+		case 0xD1: // POP DE
+			c.e = c.pop()
+			c.d = c.pop()
 		case 0xD5: // PUSH DE
 			c.push(c.d)
 			c.push(c.e)
 			<-c.clock
 			c.cycles++
+		case 0xD6: // SUB A, #
+			c.a = c.sub(c.a, c.readPc())
+		case 0xDE: // SBC A, #
+			c.a = c.subC(c.a, c.readPc())
 		case 0xE0: // LDH (n), A
 			n := c.readPc()
 			c.writeByte(0xFF, n, c.a)
+		case 0xE1: // POP HL
+			c.l = c.pop()
+			c.h = c.pop()
 		case 0xE2: // LD (C), A
 			c.writeByte(0xFF, c.c, c.a)
 		case 0xE5: // PUSH HL
@@ -330,6 +530,8 @@ func main() {
 			c.push(c.l)
 			<-c.clock
 			c.cycles++
+		case 0xE6: // AND #
+			c.a = c.and(c.a, c.readPc())
 		case 0xEA: // LD (nn), A
 			l := c.readPc()
 			h := c.readPc()
@@ -337,6 +539,9 @@ func main() {
 		case 0xF0: // LDH A, (n)
 			n := c.readPc()
 			c.a = c.readByte(0xFF, n)
+		case 0xF1: // POP AF
+			c.f = c.pop()
+			c.a = c.pop()
 		case 0xF2: // LD A, (C)
 			c.a = c.readByte(0xFF, c.c)
 		case 0xF5: // PUSH AF
@@ -346,7 +551,7 @@ func main() {
 			c.cycles++
 		case 0xF8: // LDHL SP, n
 			n := int8(c.readPc())
-			hl := c.add(c.sp, n)
+			hl := c.addSigned(c.sp, n)
 			c.h = uint8(hl >> 8)
 			c.l = uint8(hl & 0xFF)
 			c.f &= flagZReset
@@ -362,7 +567,7 @@ func main() {
 			h := c.readPc()
 			c.a = c.readByte(h, l)
 		default:
-			panic(fmt.Sprintf("unknown opcode %x", opcode))
+			panic(fmt.Sprintf("unknown opcode 0x%X", opcode))
 		}
 		period := time.Since(startTime)
 		startTime = time.Now()
