@@ -29,13 +29,26 @@ type cpu struct {
 	cycles uint8
 }
 
+const (
+	flagZReset uint8 = 0x70
+	flagNReset       = 0xB0
+	flagHReset       = 0xD0
+	flagCReset       = 0xE0
+
+	flagZSet = 0x80
+	flagNSet = 0x40
+	flagHSet = 0x20
+	flagCSet = 0x10
+)
+
 func newCpu(rom []uint8) *cpu {
 	romFull := make([]uint8, 256)
 	copy(romFull, rom)
 	ram := make([]uint8, 65536)
-	hz := 1.05e6
+	hz := 1.0 //1.05e6
 	period := time.Duration(1e9 / hz)
 	clock := time.Tick(period)
+
 	return &cpu{sp: 0xFFFE, rom: romFull, ram: ram, period: period, clock: clock}
 }
 
@@ -75,6 +88,24 @@ func (c *cpu) writeByte(ms, ls, b uint8) {
 	c.ram[addr] = b
 }
 
+func (c *cpu) sub(a uint16, b uint16) uint16 {
+	//TODO: set flags
+	return a - b
+}
+
+func (c *cpu) add(a uint16, b int8) uint16 {
+	if b < 0 {
+		return c.sub(a, uint16(-b))
+	}
+	//TODO: set flags
+	return a + uint16(b)
+}
+
+func (c *cpu) push(b uint8) {
+	c.writeByte(uint8(c.sp>>8), uint8(c.sp&0xFF), b)
+	c.sp--
+}
+
 func decrement(ms, ls uint8) (uint8, uint8) {
 	addr := uint16(ms)<<8 + uint16(ls) - 1
 	return uint8(addr >> 8), uint8(addr & 0xFF)
@@ -86,22 +117,38 @@ func increment(ms, ls uint8) (uint8, uint8) {
 }
 
 func main() {
-	c := newCpu([]uint8{0x06, 55, 0x7e, 0x22})
+	c := newCpu([]uint8{0x06, 55, 0x0A, 0x7e, 0x22, 0x03, 0xF5})
 
 	// main loop
-	//startTime := time.Now()
+	startTime := time.Now()
 	for {
 		opcode := c.readPc()
 		switch opcode {
 		case 0x00: // NOP
+		case 0x01: // LD BC, nn
+			c.c = c.readPc()
+			c.b = c.readPc()
 		case 0x02: // LD (BC), A
 			c.writeByte(c.b, c.c, c.a)
+		case 0x03: // INC BC
+			c.b, c.c = increment(c.b, c.c)
+			<-c.clock
+			c.cycles++
 		case 0x06: // LD B, n
 			c.b = c.readPc()
+		case 0x08: // LD (nn), SP
+			l := c.readPc()
+			h := c.readPc()
+			c.writeByte(h, l, uint8(c.sp&0xFF))
+			h, l = increment(h, l)
+			c.writeByte(h, l, uint8(c.sp>>8))
 		case 0x0A: // LD A, (BC)
 			c.a = c.readByte(c.b, c.c)
 		case 0x0E: // LD C, n
 			c.c = c.readPc()
+		case 0x11: // LD DE, nn
+			c.e = c.readPc()
+			c.d = c.readPc()
 		case 0x12: // LD (DE), A
 			c.writeByte(c.d, c.e, c.a)
 		case 0x16: // LD D, n
@@ -110,6 +157,9 @@ func main() {
 			c.a = c.readByte(c.d, c.e)
 		case 0x1E: // LD E, n
 			c.e = c.readPc()
+		case 0x21: // LD HL, nn
+			c.l = c.readPc()
+			c.h = c.readPc()
 		case 0x22: // LDI (HL), A
 			c.writeByte(c.h, c.l, c.a)
 			c.h, c.l = increment(c.h, c.l)
@@ -120,6 +170,10 @@ func main() {
 			c.h, c.l = increment(c.h, c.l)
 		case 0x2E: // LD L, n
 			c.l = c.readPc()
+		case 0x31: // LD SP, nn
+			l := c.readPc()
+			h := c.readPc()
+			c.sp = uint16(h)<<8 + uint16(l)
 		case 0x32: // LDD (HL), A
 			c.writeByte(c.h, c.l, c.a)
 			c.h, c.l = decrement(c.h, c.l)
@@ -256,11 +310,26 @@ func main() {
 			c.a = c.readByte(c.h, c.l)
 		case 0x7F: // LD A, A
 			c.a = c.a
+		case 0xC5: // PUSH BC
+			c.push(c.b)
+			c.push(c.c)
+			<-c.clock
+			c.cycles++
+		case 0xD5: // PUSH DE
+			c.push(c.d)
+			c.push(c.e)
+			<-c.clock
+			c.cycles++
 		case 0xE0: // LDH (n), A
 			n := c.readPc()
 			c.writeByte(0xFF, n, c.a)
 		case 0xE2: // LD (C), A
 			c.writeByte(0xFF, c.c, c.a)
+		case 0xE5: // PUSH HL
+			c.push(c.h)
+			c.push(c.l)
+			<-c.clock
+			c.cycles++
 		case 0xEA: // LD (nn), A
 			l := c.readPc()
 			h := c.readPc()
@@ -270,6 +339,24 @@ func main() {
 			c.a = c.readByte(0xFF, n)
 		case 0xF2: // LD A, (C)
 			c.a = c.readByte(0xFF, c.c)
+		case 0xF5: // PUSH AF
+			c.push(c.a)
+			c.push(c.f)
+			<-c.clock
+			c.cycles++
+		case 0xF8: // LDHL SP, n
+			n := int8(c.readPc())
+			hl := c.add(c.sp, n)
+			c.h = uint8(hl >> 8)
+			c.l = uint8(hl & 0xFF)
+			c.f &= flagZReset
+			c.f &= flagNReset
+			<-c.clock
+			c.cycles++
+		case 0xF9: // LD SP, HL
+			c.sp = uint16(c.h)<<8 + uint16(c.l)
+			<-c.clock
+			c.cycles++
 		case 0xFA: // LD A, (nn)
 			l := c.readPc()
 			h := c.readPc()
@@ -277,13 +364,13 @@ func main() {
 		default:
 			panic(fmt.Sprintf("unknown opcode %x", opcode))
 		}
-		//period := time.Since(startTime)
-		//startTime = time.Now()
+		period := time.Since(startTime)
+		startTime = time.Now()
 		//mhz := 1e3 * float64(c.cycles) / float64(period)
 
-		if c.pc == 0 {
-			fmt.Println(c)
-		}
+		//if c.pc == 0 {
+		fmt.Println(c, period)
+		//}
 
 		c.cycles = 0
 	}
