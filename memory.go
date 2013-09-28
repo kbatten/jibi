@@ -101,6 +101,12 @@ func (mc memoryController) readByte(addr addressInterface) uint8 {
 	return mc.iram.readByte(address(a))
 }
 
+func (mc memoryController) readWord(addr address) uint16 {
+	l := mc.readByte(addr)
+	h := mc.readByte(address(addr.Uint16() + 1))
+	return bytesToWord(h, l)
+}
+
 func (mc memoryController) writeByte(addr addressInterface, b uint8) {
 	a := addr.Uint16()
 	if a < 0x8000 {
@@ -126,8 +132,8 @@ func (mc memoryController) writeByte(addr addressInterface, b uint8) {
 	mc.iram.writeByte(address(a), b)
 }
 
-func (mc *memoryController) readWord(addr address) uint16 {
-	l := mc.readByte(addr)
-	h := mc.readByte(address(addr.Uint16() + 1))
-	return uint16(h)<<8 + uint16(l)
+func (mc memoryController) writeWord(addr address, w uint16) {
+	h, l := wordToBytes(w)
+	mc.writeByte(addr, l)
+	mc.writeByte(address(addr.Uint16()+1), h)
 }

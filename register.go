@@ -26,12 +26,13 @@ func (r register8) setWord(u uint16) {
 	if r.lrp == nil {
 		panic("lower register is nil")
 	}
-	r.set(uint8(u >> 8))
-	r.lrp.set(uint8(u & 0xFF))
+	h, l := wordToBytes(u)
+	r.set(h)
+	r.lrp.set(l)
 }
 
 func (r register8) getWord() uint16 {
-	return uint16(r.get())<<8 + uint16(r.lrp.get())
+	return bytesToWord(r.get(), r.lrp.get())
 }
 
 func (r register8) get() uint8 {
@@ -44,6 +45,10 @@ func (r register8) set(v uint8) {
 
 func (r register8) setFlag(f uint8) {
 	*r.vp |= f
+}
+
+func (r register8) resetFlag(f uint8) {
+	*r.vp &= (f ^ 0xFF)
 }
 
 func (r register8) getFlag(f uint8) bool {
