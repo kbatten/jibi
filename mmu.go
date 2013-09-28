@@ -1,14 +1,13 @@
 package main
 
-import ()
+import (
+//	"fmt"
+)
 
-type memoryController struct {
-	addr chan uint16
-	data chan uint8
-
-	rom  memoryDevice // 32k (only first four banks)
+type mmu struct {
+	rom  memoryDevice // 32k
 	vram memoryDevice // 8k
-	eram memoryDevice // 8k (only first bank)
+	eram memoryDevice // 8k
 	wram memoryDevice // 8k
 	iram memoryDevice // 8k
 }
@@ -18,7 +17,6 @@ type memoryDevice interface {
 	writeByte(addressInterface, uint8)
 }
 
-// TODO: add support for banks
 type ramModule []uint8
 
 func newRamModule(size uint16, data []uint8) *ramModule {
@@ -42,7 +40,6 @@ func (r *ramModule) writeByte(addr addressInterface, b uint8) {
 	(*r)[a] = b
 }
 
-// TODO: add support for banks
 type romModule []uint8
 
 func newRomModule(size uint16, data []uint8) *romModule {
@@ -62,11 +59,11 @@ func (r *romModule) writeByte(addressInterface, uint8) {
 	// nop
 }
 
-func newMemoryController(rom []uint8) memoryController {
-	mc := memoryController{
-		rom:  newRomModule(0x8000, rom),
+func newMmu(cart cartridge) mmu {
+	mc := mmu{
+		rom:  cart,
 		vram: newRamModule(0x2000, nil),
-		eram: newRamModule(0x2000, nil),
+		eram: nil, //cart.ramDevice,
 		wram: newRamModule(0x2000, nil),
 		iram: newRamModule(0x2000, nil)}
 	return mc
@@ -80,7 +77,7 @@ type address uint16
 
 func (u address) Uint16() uint16 { return uint16(u) }
 
-func (mc memoryController) readByte(addr addressInterface) uint8 {
+func (mc mmu) readByte(addr addressInterface) uint8 {
 	a := addr.Uint16()
 	if a < 0x8000 {
 		return mc.rom.readByte(address(a))
@@ -101,13 +98,13 @@ func (mc memoryController) readByte(addr addressInterface) uint8 {
 	return mc.iram.readByte(address(a))
 }
 
-func (mc memoryController) readWord(addr address) uint16 {
+func (mc mmu) readWord(addr address) uint16 {
 	l := mc.readByte(addr)
 	h := mc.readByte(address(addr.Uint16() + 1))
 	return bytesToWord(h, l)
 }
 
-func (mc memoryController) writeByte(addr addressInterface, b uint8) {
+func (mc mmu) writeByte(addr addressInterface, b uint8) {
 	a := addr.Uint16()
 	if a < 0x8000 {
 		mc.rom.writeByte(address(a), b)
@@ -132,7 +129,7 @@ func (mc memoryController) writeByte(addr addressInterface, b uint8) {
 	mc.iram.writeByte(address(a), b)
 }
 
-func (mc memoryController) writeWord(addr address, w uint16) {
+func (mc mmu) writeWord(addr address, w uint16) {
 	h, l := wordToBytes(w)
 	mc.writeByte(addr, l)
 	mc.writeByte(address(addr.Uint16()+1), h)

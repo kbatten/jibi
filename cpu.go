@@ -27,14 +27,7 @@ type cpu struct {
 	// current instruction buffer
 	inst instruction
 
-	// interrupt state
-	// note: these take affect after the next instruction
-	di bool // disable interrupts
-	ei bool // enable interrutps
-
-	// connections
-	mc  memoryController // read/write bytes and words
-	res connection       // reset cpu on read
+	mc mmu // read/write bytes and words
 }
 
 const (
@@ -44,7 +37,7 @@ const (
 	flagC = 0x10
 )
 
-func newCpu(mc memoryController, reset connection) *cpu {
+func newCpu(cart cartridge) *cpu {
 	// use internal clock
 	// 1 machine cycle = 4 clock cycles
 	// machine cycles: 1.05MHz nop: 1 cycle
@@ -53,6 +46,9 @@ func newCpu(mc memoryController, reset connection) *cpu {
 	period := time.Duration(1e9 / hz)
 	ticker := time.NewTicker(period)
 	clock := ticker.C
+
+	// internal mmu
+	mc := newMmu(cart)
 
 	f := newFlagsRegister8()
 	a := newRegister8(&f)
@@ -64,7 +60,7 @@ func newCpu(mc memoryController, reset connection) *cpu {
 	h := newRegister8(&l)
 
 	return &cpu{a: a, b: b, c: c, d: d, e: e, f: f, l: l, h: h,
-		sp: 0xFFFE, mTicker: ticker, mClock: clock, res: reset, mc: mc}
+		sp: 0xFFFE, mTicker: ticker, mClock: clock, mc: mc}
 }
 
 func (c *cpu) String() string {
@@ -88,12 +84,29 @@ func (c *cpu) reset() {
 	c.pc = 0
 	c.m = 0
 	c.t = 0
-	c.di = false
-	c.ei = false
 }
 
 func (c *cpu) xor(a, b uint8) uint8 {
 	r := a ^ b
+	c.f.set(0)
+	if r == 0 {
+		c.f.setFlag(flagZ)
+	}
+	return r
+}
+
+func (c *cpu) and(a, b uint8) uint8 {
+	r := a & b
+	c.f.set(0)
+	if r == 0 {
+		c.f.setFlag(flagZ)
+	}
+	c.f.setFlag(flagH)
+	return r
+}
+
+func (c *cpu) or(a, b uint8) uint8 {
+	r := a | b
 	c.f.set(0)
 	if r == 0 {
 		c.f.setFlag(flagZ)
@@ -125,6 +138,14 @@ func (c *cpu) dec(a uint8) uint8 {
 	return r
 }
 
+func (c *cpu) subC(a, b uint8) uint8 {
+	carry := uint8(0)
+	if c.f.getFlag(flagC) {
+		carry = 1
+	}
+	return c.sub(a, b+carry)
+}
+
 func (c *cpu) sub(a, b uint8) uint8 {
 	r := a - b
 	c.f.set(0)
@@ -141,6 +162,29 @@ func (c *cpu) sub(a, b uint8) uint8 {
 	return r
 }
 
+func (c *cpu) addWordR(a uint16, b int8) uint16 {
+	h := uint8(a >> 8)
+	l := uint8(a & 0xFF)
+	bu := uint8(b)
+	if b < 0 {
+		bu = uint8(-b)
+		l = c.sub(l, bu)
+		h = c.subC(h, 0)
+		return uint16(h)<<8 + uint16(l)
+	}
+	l = c.add(l, bu)
+	h = c.addC(h, 0)
+	return uint16(h)<<8 + uint16(l)
+}
+
+func (c *cpu) addC(a, b uint8) uint8 {
+	carry := uint8(0)
+	if c.f.getFlag(flagC) {
+		carry = 1
+	}
+	return c.add(a, b+carry)
+}
+
 func (c *cpu) add(a, b uint8) uint8 {
 	r := a + b
 	c.f.set(0)
@@ -151,6 +195,21 @@ func (c *cpu) add(a, b uint8) uint8 {
 		c.f.setFlag(flagH)
 	}
 	if uint16(a)+uint16(b) > 0xFF {
+		c.f.setFlag(flagC)
+	}
+	return r
+}
+
+func (c *cpu) rr(n uint8) uint8 {
+	r := n >> 1
+	if c.f.getFlag(flagC) { // old carry is bit 7
+		r += 1 << 7
+	}
+	c.f.set(0)
+	if r == 0 {
+		c.f.setFlag(flagZ)
+	}
+	if n&0x01 == 0x01 { // carry is old bit 0
 		c.f.setFlag(flagC)
 	}
 	return r
@@ -183,6 +242,12 @@ func (c *cpu) jp(addr address) {
 func (c *cpu) call(addr address) {
 	c.pushWord(uint16(c.pc))
 	c.jp(addr)
+}
+
+func (c *cpu) popWord() uint16 {
+	r := c.mc.readWord(address(c.sp))
+	c.sp += 2
+	return r
 }
 
 func (c *cpu) pushWord(w uint16) {
