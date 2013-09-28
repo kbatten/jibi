@@ -42,6 +42,17 @@ func (r register8) set(v uint8) {
 	*r.vp = v
 }
 
+func (r register8) setFlag(f uint8) {
+	*r.vp |= f
+}
+
+func (r register8) getFlag(f uint8) bool {
+	if *r.vp&f == f {
+		return true
+	}
+	return false
+}
+
 type register16 uint16
 
 func (r register16) Uint16() uint16 {

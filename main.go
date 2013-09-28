@@ -58,13 +58,14 @@ func main() {
 
 	rom := loadRom(args["<rom>"].(string))
 
-	rom = []byte{0x01, 0x06, 0x07}
-
 	mc := newMemoryController(rom)
 	c := newCpu(mc, nil)
 	fmt.Println(c)
-	for i := 0; i < 5; i++ {
+	for {
 		c.loop()
 		fmt.Println(c)
+		if len(commandTable[c.inst[0]].String()) == 0 {
+			panic("unknown opcode")
+		}
 	}
 }

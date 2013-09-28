@@ -27,10 +27,10 @@ type cpu struct {
 	// current instruction buffer
 	inst instruction
 
-	// extra state
-	// TODO: find a way to remove
-	di int // disable interrupts counter
-	ei int // enable interrutps counter
+	// interrupt state
+	// note: these take affect after the next instruction
+	di bool // disable interrupts
+	ei bool // enable interrutps
 
 	// connections
 	mc  memoryController // read/write bytes and words
@@ -88,8 +88,48 @@ func (c *cpu) reset() {
 	c.pc = 0
 	c.m = 0
 	c.t = 0
-	c.di = 0
-	c.ei = 0
+	c.di = false
+	c.ei = false
+}
+
+func (c *cpu) xor(a, b uint8) uint8 {
+	r := a ^ b
+	c.f.set(0)
+	if r == 0 {
+		c.f.setFlag(flagZ)
+	}
+	return r
+}
+
+func (c *cpu) sub(a, b uint8) uint8 {
+	r := a - b
+	c.f.set(0)
+	if r == 0 {
+		c.f.setFlag(flagZ)
+	}
+	c.f.setFlag(flagN)
+	if a&0x0F >= b&0x0F {
+		c.f.setFlag(flagH)
+	}
+	if a >= b {
+		c.f.setFlag(flagC)
+	}
+	return r
+}
+
+func (c *cpu) add(a, b uint8) uint8 {
+	r := a + b
+	c.f.set(0)
+	if r == 0 {
+		c.f.setFlag(flagZ)
+	}
+	if a&0x0F+b&0x0F > 0x0F {
+		c.f.setFlag(flagH)
+	}
+	if uint16(a)+uint16(b) > 0xFF {
+		c.f.setFlag(flagC)
+	}
+	return r
 }
 
 /*

@@ -1,7 +1,6 @@
 package main
 
-import (
-)
+import ()
 
 type memoryController struct {
 	addr chan uint16
@@ -100,6 +99,31 @@ func (mc memoryController) readByte(addr address) uint8 {
 	}
 	a -= 0x2000
 	return mc.iram.readByte(Uint16(a))
+}
+
+func (mc memoryController) writeByte(addr address, b uint8) {
+	a := addr.Uint16()
+	if a < 0x8000 {
+		mc.rom.writeByte(Uint16(a), b)
+		return
+	}
+	a -= 0x8000
+	if a < 0x2000 {
+		mc.vram.writeByte(Uint16(a), b)
+		return
+	}
+	a -= 0x2000
+	if a < 0x2000 {
+		mc.eram.writeByte(Uint16(a), b)
+		return
+	}
+	a -= 0x2000
+	if a < 0x2000 {
+		mc.wram.writeByte(Uint16(a), b)
+		return
+	}
+	a -= 0x2000
+	mc.iram.writeByte(Uint16(a), b)
 }
 
 func (mc *memoryController) readWord(addr address) uint16 {
