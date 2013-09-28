@@ -63,7 +63,7 @@ func newMmu(cart cartridge) mmu {
 	mc := mmu{
 		rom:  cart,
 		vram: newRamModule(0x2000, nil),
-		eram: nil, //cart.ramDevice,
+		eram: newRamModule(0x2000, nil),
 		wram: newRamModule(0x2000, nil),
 		iram: newRamModule(0x2000, nil)}
 	return mc
