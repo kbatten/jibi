@@ -25,8 +25,7 @@ type cpu struct {
 	t       uint8 // clock cycles
 
 	// current instruction buffer
-	inst     instruction
-	commands []command
+	inst instruction
 
 	// extra state
 	// TODO: find a way to remove
@@ -55,17 +54,17 @@ func newCpu(mc memoryController, reset connection) *cpu {
 	ticker := time.NewTicker(period)
 	clock := ticker.C
 
-	f := newRegister8(0xF0, nil)
-	a := newRegister8(0, &f)
-	c := newRegister8(0, nil)
-	b := newRegister8(0, &c)
-	e := newRegister8(0, nil)
-	d := newRegister8(0, &e)
-	l := newRegister8(0, nil)
-	h := newRegister8(0, &l)
+	f := newFlagsRegister8()
+	a := newRegister8(&f)
+	c := newRegister8(nil)
+	b := newRegister8(&c)
+	e := newRegister8(nil)
+	d := newRegister8(&e)
+	l := newRegister8(nil)
+	h := newRegister8(&l)
 
 	return &cpu{a: a, b: b, c: c, d: d, e: e, f: f, l: l, h: h,
-		sp: 0xFFFE, mTicker: ticker, mClock: clock, res:reset, mc:mc}
+		sp: 0xFFFE, mTicker: ticker, mClock: clock, res: reset, mc: mc}
 }
 
 func (c *cpu) String() string {
@@ -327,12 +326,11 @@ func (c *cpu) fetch() {
 		c.pc++
 	}
 	c.inst = inst
-	fmt.Println(c.inst)
 }
 
 func (c *cpu) execute() {
 	opcode := c.inst[0]
-	c.commands[opcode].f(c)
+	commandTable[opcode].f(c)
 }
 
 func (c *cpu) loop() {

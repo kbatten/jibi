@@ -18,8 +18,9 @@ func (c command) String() string {
 
 var commandTable = []command{
 	command{"NOP", 0x00, 0, 4, func(*cpu) {}},
-	command{"LD BC, nn", 0x01, 2, 4, func(c *cpu) {
-		c.b.setWord(c.mc.readWord(c.pc))
+	command{"LD BC, nn", 0x01, 2, 12, func(c *cpu) {
+		c.c.set(c.inst[1])
+		c.b.set(c.inst[2])
 		c.pc += 2
 	}},
 }
@@ -36,7 +37,7 @@ func newInstruction(d ...uint8) instruction {
 func (i instruction) String() string {
 	if len(i) > 0 {
 		opcode := i[0]
-		return fmt.Sprintf("< %v %v >", commandTable[opcode], i[1:])
+		return fmt.Sprintf("< %s %v >", commandTable[opcode], []uint8(i[1:]))
 	}
 	return "< >"
 }

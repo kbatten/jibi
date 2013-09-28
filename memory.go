@@ -1,6 +1,7 @@
 package main
 
-import ("log")
+import (
+)
 
 type memoryController struct {
 	addr chan uint16
@@ -82,7 +83,6 @@ func (u Uint16) Uint16() uint16 { return uint16(u) }
 
 func (mc memoryController) readByte(addr address) uint8 {
 	a := addr.Uint16()
-	log.Printf("readByte: 0x%04X\n", a)
 	if a < 0x8000 {
 		return mc.rom.readByte(Uint16(a))
 	}

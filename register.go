@@ -10,8 +10,12 @@ type register8 struct {
 	mask uint8
 }
 
-func newRegister8(mask uint8, lrp *register8) register8 {
-	return register8{new(uint8), lrp, mask}
+func newFlagsRegister8() register8 {
+	return register8{new(uint8), nil, 0xF0}
+}
+
+func newRegister8(lrp *register8) register8 {
+	return register8{new(uint8), lrp, 0xFF}
 }
 
 func (r register8) String() string {
