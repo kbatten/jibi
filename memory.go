@@ -14,8 +14,8 @@ type memoryController struct {
 }
 
 type memoryDevice interface {
-	readByte(address) uint8
-	writeByte(address, uint8)
+	readByte(addressInterface) uint8
+	writeByte(addressInterface, uint8)
 }
 
 // TODO: add support for banks
@@ -26,7 +26,7 @@ func newRamModule(size uint16, data []uint8) *ramModule {
 	copy(rm, data)
 	return &rm
 }
-func (r *ramModule) readByte(addr address) uint8 {
+func (r *ramModule) readByte(addr addressInterface) uint8 {
 	a := addr.Uint16()
 	if a > uint16(len(*r)) {
 		panic("ram read out of range")
@@ -34,7 +34,7 @@ func (r *ramModule) readByte(addr address) uint8 {
 	return (*r)[a]
 }
 
-func (r *ramModule) writeByte(addr address, b uint8) {
+func (r *ramModule) writeByte(addr addressInterface, b uint8) {
 	a := addr.Uint16()
 	if a > uint16(len(*r)) {
 		panic("ram write out of range")
@@ -50,7 +50,7 @@ func newRomModule(size uint16, data []uint8) *romModule {
 	copy(rm, data)
 	return &rm
 }
-func (r *romModule) readByte(addr address) uint8 {
+func (r *romModule) readByte(addr addressInterface) uint8 {
 	a := addr.Uint16()
 	if a > uint16(len(*r)) {
 		panic("rom read out of range")
@@ -58,7 +58,7 @@ func (r *romModule) readByte(addr address) uint8 {
 	return (*r)[a]
 }
 
-func (r *romModule) writeByte(address, uint8) {
+func (r *romModule) writeByte(addressInterface, uint8) {
 	// nop
 }
 
@@ -72,62 +72,62 @@ func newMemoryController(rom []uint8) memoryController {
 	return mc
 }
 
-type address interface {
+type addressInterface interface {
 	Uint16() uint16
 }
 
-type Uint16 uint16
+type address uint16
 
-func (u Uint16) Uint16() uint16 { return uint16(u) }
+func (u address) Uint16() uint16 { return uint16(u) }
 
-func (mc memoryController) readByte(addr address) uint8 {
+func (mc memoryController) readByte(addr addressInterface) uint8 {
 	a := addr.Uint16()
 	if a < 0x8000 {
-		return mc.rom.readByte(Uint16(a))
+		return mc.rom.readByte(address(a))
 	}
 	a -= 0x8000
 	if a < 0x2000 {
-		return mc.vram.readByte(Uint16(a))
+		return mc.vram.readByte(address(a))
 	}
 	a -= 0x2000
 	if a < 0x2000 {
-		return mc.eram.readByte(Uint16(a))
+		return mc.eram.readByte(address(a))
 	}
 	a -= 0x2000
 	if a < 0x2000 {
-		return mc.wram.readByte(Uint16(a))
+		return mc.wram.readByte(address(a))
 	}
 	a -= 0x2000
-	return mc.iram.readByte(Uint16(a))
+	return mc.iram.readByte(address(a))
 }
 
-func (mc memoryController) writeByte(addr address, b uint8) {
+func (mc memoryController) writeByte(addr addressInterface, b uint8) {
 	a := addr.Uint16()
 	if a < 0x8000 {
-		mc.rom.writeByte(Uint16(a), b)
+		mc.rom.writeByte(address(a), b)
 		return
 	}
 	a -= 0x8000
 	if a < 0x2000 {
-		mc.vram.writeByte(Uint16(a), b)
+		mc.vram.writeByte(address(a), b)
 		return
 	}
 	a -= 0x2000
 	if a < 0x2000 {
-		mc.eram.writeByte(Uint16(a), b)
+		mc.eram.writeByte(address(a), b)
 		return
 	}
 	a -= 0x2000
 	if a < 0x2000 {
-		mc.wram.writeByte(Uint16(a), b)
+		mc.wram.writeByte(address(a), b)
 		return
 	}
 	a -= 0x2000
-	mc.iram.writeByte(Uint16(a), b)
+	mc.iram.writeByte(address(a), b)
 }
 
 func (mc *memoryController) readWord(addr address) uint16 {
 	l := mc.readByte(addr)
-	h := mc.readByte(Uint16(addr.Uint16() + 1))
+	h := mc.readByte(address(addr.Uint16() + 1))
 	return uint16(h)<<8 + uint16(l)
 }

@@ -102,15 +102,15 @@ func (c *cpu) xor(a, b uint8) uint8 {
 }
 
 func (c *cpu) dec(a uint8) uint8 {
-    r := a - 1
-    if r == 0 {
-        c.f.setFlag(flagZ)
-    }
-    c.f.setFlag(flagN)
-    if a&0x0F >= 1 {
-        c.f.setFlag(flagH)
-    }
-    return r
+	r := a - 1
+	if r == 0 {
+		c.f.setFlag(flagZ)
+	}
+	c.f.setFlag(flagN)
+	if a&0x0F >= 1 {
+		c.f.setFlag(flagH)
+	}
+	return r
 }
 
 func (c *cpu) sub(a, b uint8) uint8 {

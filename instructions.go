@@ -37,7 +37,9 @@ var commandTable = []command{
 	command{"", 0x0A, 0, 0, func(*cpu) {}},
 	command{"", 0x0B, 0, 0, func(*cpu) {}},
 	command{"", 0x0C, 0, 0, func(*cpu) {}},
-	command{"", 0x0D, 0, 0, func(*cpu) {}},
+	command{"DEC C", 0x0D, 0, 4, func(c *cpu) {
+		c.c.set(c.dec(c.c.get()))
+	}},
 	command{"LD C, #", 0x0E, 1, 8, func(c *cpu) {
 		c.c.set(c.inst[1])
 	}},
@@ -74,7 +76,10 @@ var commandTable = []command{
 	command{"", 0x27, 0, 0, func(*cpu) {}},
 	command{"", 0x28, 0, 0, func(*cpu) {}},
 	command{"", 0x29, 0, 0, func(*cpu) {}},
-	command{"", 0x2A, 0, 0, func(*cpu) {}},
+	command{"LDI A, (HL)", 0x2A, 0, 8, func(c *cpu) {
+		c.a.set(c.mc.readByte(address(c.h.getWord())))
+		c.h.setWord(c.h.getWord() + 1)
+	}},
 	command{"", 0x2B, 0, 0, func(*cpu) {}},
 	command{"", 0x2C, 0, 0, func(*cpu) {}},
 	command{"", 0x2D, 0, 0, func(*cpu) {}},
@@ -85,14 +90,14 @@ var commandTable = []command{
 		c.sp = register16(bytesToWord(c.inst[2], c.inst[1]))
 	}},
 	command{"LDD (HL), A", 0x32, 0, 8, func(c *cpu) {
-		c.mc.writeByte(Uint16(c.h.getWord()), c.a.get())
+		c.mc.writeByte(address(c.h.getWord()), c.a.get())
 		c.h.setWord(c.h.getWord() - 1)
 	}},
 	command{"", 0x33, 0, 0, func(*cpu) {}},
 	command{"", 0x34, 0, 0, func(*cpu) {}},
 	command{"", 0x35, 0, 0, func(*cpu) {}},
 	command{"LD (HL), n", 0x36, 1, 12, func(c *cpu) {
-		c.mc.writeByte(Uint16(c.h.getWord()), c.inst[1])
+		c.mc.writeByte(address(c.h.getWord()), c.inst[1])
 	}},
 	command{"", 0x37, 0, 0, func(*cpu) {}},
 	command{"", 0x38, 0, 0, func(*cpu) {}},
@@ -272,7 +277,7 @@ var commandTable = []command{
 	command{"", 0xDE, 0, 0, func(*cpu) {}},
 	command{"", 0xDF, 0, 0, func(*cpu) {}},
 	command{"LDH (n), A", 0xE0, 1, 12, func(c *cpu) {
-		c.mc.writeByte(Uint16(0xFF00+uint16(c.inst[1])), c.a.get())
+		c.mc.writeByte(address(0xFF00+uint16(c.inst[1])), c.a.get())
 	}},
 	command{"", 0xE1, 0, 0, func(*cpu) {}},
 	command{"", 0xE2, 0, 0, func(*cpu) {}},
@@ -290,7 +295,7 @@ var commandTable = []command{
 	command{"", 0xEE, 0, 0, func(*cpu) {}},
 	command{"", 0xEF, 0, 0, func(*cpu) {}},
 	command{"LDH A, (n)", 0xF0, 1, 12, func(c *cpu) {
-		c.a.set(c.mc.readByte(Uint16(0xFF00 + uint16(c.inst[1]))))
+		c.a.set(c.mc.readByte(address(0xFF00 + uint16(c.inst[1]))))
 	}},
 	command{"", 0xF1, 0, 0, func(*cpu) {}},
 	command{"", 0xF2, 0, 0, func(*cpu) {}},
@@ -305,7 +310,7 @@ var commandTable = []command{
 	command{"", 0xF9, 0, 0, func(*cpu) {}},
 	command{"LD A, (nn)", 0xFA, 2, 16, func(c *cpu) {
 		nn := uint16(c.inst[2])<<8 + uint16(c.inst[1])
-		c.a.set(c.mc.readByte(Uint16(nn)))
+		c.a.set(c.mc.readByte(address(nn)))
 	}},
 	command{"", 0xFB, 0, 0, func(*cpu) {}},
 	command{"", 0xFC, 0, 0, func(*cpu) {}},
