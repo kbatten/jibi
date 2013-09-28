@@ -1,76 +1,99 @@
 package main
 
 import (
-	"archive/zip"
 	"fmt"
-	"io/ioutil"
-	"log"
-	"strings"
 	"time"
-
-	docopt "github.com/docopt/docopt.go"
 )
 
-// 1 machine cycle = 4 clock cycles
-// machine cycles: 1.05MHz nop: 1 cycle
-// clock cycles: 4.19MHz nop: 4 cycles
 type cpu struct {
-	a  uint8
-	b  uint8
-	c  uint8
-	d  uint8
-	e  uint8
-	f  uint8 // lower 4 bits always read cero
-	h  uint8
-	l  uint8
-	sp uint16
-	pc uint16
+	// registers
+	a  register8
+	b  register8
+	c  register8
+	d  register8
+	e  register8
+	f  register8 // 8 bits, but lower 4 bits always read zero
+	h  register8
+	l  register8
+	sp register16
+	pc register16
 
-	rom []uint8
-	ram []uint8
+	// clocks
+	mClock  <-chan time.Time
+	mTicker *time.Ticker
+	m       uint8 // machine cycles
+	t       uint8 // clock cycles
 
-	period time.Duration
+	// current instruction buffer
+	inst     instruction
+	commands []command
 
-	clock  <-chan time.Time
-	cycles uint8
+	// extra state
+	// TODO: find a way to remove
+	di int // disable interrupts counter
+	ei int // enable interrutps counter
 
-	di int
-	ei int
-
-	cur []uint8
+	// connections
+	mc  memoryController // read/write bytes and words
+	res connection       // reset cpu on read
 }
 
 const (
-	flagZReset uint8 = 0x70
-	flagNReset       = 0xB0
-	flagHReset       = 0xD0
-	flagCReset       = 0xE0
-
-	flagZSet = 0x80
-	flagNSet = 0x40
-	flagHSet = 0x20
-	flagCSet = 0x10
+	flagZ = 0x80
+	flagN = 0x40
+	flagH = 0x20
+	flagC = 0x10
 )
 
-func newCpu(rom []uint8) *cpu {
-	ram := make([]uint8, 65536)
-	hz := 1.05e6
+func newCpu(mc memoryController, reset connection) *cpu {
+	// use internal clock
+	// 1 machine cycle = 4 clock cycles
+	// machine cycles: 1.05MHz nop: 1 cycle
+	// clock cycles: 4.19MHz nop: 4 cycles
+	hz := 4.194304 * 1e6 / 4.0 // 4.19MHz clock to 1.05 machine cycles
 	period := time.Duration(1e9 / hz)
-	clock := time.Tick(period)
+	ticker := time.NewTicker(period)
+	clock := ticker.C
 
-	return &cpu{sp: 0xFFFE, rom: rom, ram: ram, period: period, clock: clock}
+	f := newRegister8(0xF0, nil)
+	a := newRegister8(0, &f)
+	c := newRegister8(0, nil)
+	b := newRegister8(0, &c)
+	e := newRegister8(0, nil)
+	d := newRegister8(0, &e)
+	l := newRegister8(0, nil)
+	h := newRegister8(0, &l)
+
+	return &cpu{a: a, b: b, c: c, d: d, e: e, f: f, l: l, h: h,
+		sp: 0xFFFE, mTicker: ticker, mClock: clock, res:reset, mc:mc}
 }
 
 func (c *cpu) String() string {
-	r := "[ "
-	for _, h := range c.cur {
-		r += fmt.Sprintf("%02X ", h)
-	}
-
-	return fmt.Sprintf("%s] a:%v b:%v c:%v d:%v e:%v f:%v h:%v l:%v sp:%v pc:%v",
-		r, c.a, c.b, c.c, c.d, c.e, c.f, c.h, c.l, c.sp, c.pc)
+	return fmt.Sprintf(`%v
+    a:%v b:%v c:%v d:%v e:%v f:%v h:%v l:%v
+    af:0x%04X bc:0x%04X de:0x%04X hl:0x%04X sp:%v pc:%v`,
+		c.inst, c.a, c.b, c.c, c.d, c.e, c.f, c.h, c.l,
+		c.a.getWord(), c.b.getWord(), c.d.getWord(), c.h.getWord(), c.sp, c.pc)
 }
 
+func (c *cpu) reset() {
+	c.a.set(0)
+	c.b.set(0)
+	c.c.set(0)
+	c.d.set(0)
+	c.e.set(0)
+	c.f.set(0)
+	c.h.set(0)
+	c.l.set(0)
+	c.sp = 0xFFFE
+	c.pc = 0
+	c.m = 0
+	c.t = 0
+	c.di = 0
+	c.ei = 0
+}
+
+/*
 func (c *cpu) readPc() uint8 {
 	<-c.clock
 	c.cycles++
@@ -275,60 +298,47 @@ func increment(ms, ls uint8) (uint8, uint8) {
 	addr := uint16(ms)<<8 + uint16(ls) + 1
 	return uint8(addr >> 8), uint8(addr & 0xFF)
 }
+*/
 
-func loadRomZip(fn string) []uint8 {
-	r, err := zip.OpenReader(fn)
-	if err != nil {
-		log.Fatal(err)
+/*
+// load next instruction into c.inst
+// c.pc is updated
+func (c *cpu) fetchInstruction() {
+	opcode := c.mc.readByte(c.pc)
+	c.inst = newInstruction(opcode)
+	for i := uint8(0); i < c.commands[opcode].b; i++ {
+		c.inst = append(c.inst, c.mc.readByte(c.pc))
 	}
-	defer r.Close()
-	for _, f := range r.File {
-		if strings.HasSuffix(f.Name, ".gb") {
-			rc, err := f.Open()
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer rc.Close()
-			buf, err := ioutil.ReadAll(rc)
-			if err != nil {
-				log.Fatal(err)
-			}
-			r := make([]uint8, len(buf))
-			for i, b := range buf {
-				r[i] = uint8(b)
-			}
-			return r
-		}
-	}
-	return []uint8{}
 }
 
-func loadRom(fn string) []uint8 {
-	if strings.HasSuffix(fn, ".zip") {
-		return loadRomZip(fn)
+func (c *cpu) executeInstruction() {
+	c.commands.execute(c)
+}
+*/
+
+func (c *cpu) fetch() {
+	opcode := c.mc.readByte(c.pc)
+	c.pc++
+	command := commandTable[opcode]
+	inst := newInstruction(opcode)
+
+	for i := uint8(0); i < command.b; i++ {
+		inst = append(inst, c.mc.readByte(c.pc))
+		c.pc++
 	}
-	buf, err := ioutil.ReadFile(fn)
-	if err != nil {
-		log.Fatal(err)
-	}
-	r := make([]uint8, len(buf))
-	for i, b := range buf {
-		r[i] = uint8(b)
-	}
-	return r
+	c.inst = inst
+	fmt.Println(c.inst)
 }
 
-func main() {
-	doc := `usage: cpu <rom>`
-	args, _ := docopt.Parse(doc, nil, true, "", false)
+func (c *cpu) execute() {
+	opcode := c.inst[0]
+	c.commands[opcode].f(c)
+}
 
-	rom := loadRom(args["<rom>"].(string))
-
-	c := newCpu(rom)
-
-	// main loop
-	//startTime := time.Now()
-	for {
+func (c *cpu) loop() {
+	c.fetch()   // load next instruction into c.inst
+	c.execute() // execute c.inst instruction
+	/*
 		opcode := c.readPc()
 		switch opcode {
 		case 0x00: // NOP
@@ -794,14 +804,8 @@ func main() {
 			c.enableInterrupts()
 		}
 
-		//period := time.Since(startTime)
-		//startTime = time.Now()
-		//mhz := 1e3 * float64(c.cycles) / float64(period)
-
-		//if c.pc == 0 {
-		fmt.Println(c, c.cycles)
-		//}
-
-		c.cycles = 0
-	}
+	*/
+	// reset clocks
+	c.m = 0
+	c.t = 0
 }
