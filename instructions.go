@@ -25,8 +25,12 @@ var commandTable = []command{
 	command{"", 0x02, 0, 0, func(*cpu) {}},
 	command{"", 0x03, 0, 0, func(*cpu) {}},
 	command{"", 0x04, 0, 0, func(*cpu) {}},
-	command{"", 0x05, 0, 0, func(*cpu) {}},
-	command{"", 0x06, 0, 8, func(*cpu) {}},
+	command{"DEC B", 0x05, 0, 4, func(c *cpu) {
+		c.b.set(c.dec(c.b.get()))
+	}},
+	command{"LD B, #", 0x06, 1, 8, func(c *cpu) {
+		c.b.set(c.inst[1])
+	}},
 	command{"", 0x07, 0, 0, func(*cpu) {}},
 	command{"", 0x08, 0, 0, func(*cpu) {}},
 	command{"", 0x09, 0, 0, func(*cpu) {}},
@@ -34,7 +38,9 @@ var commandTable = []command{
 	command{"", 0x0B, 0, 0, func(*cpu) {}},
 	command{"", 0x0C, 0, 0, func(*cpu) {}},
 	command{"", 0x0D, 0, 0, func(*cpu) {}},
-	command{"", 0x0E, 0, 8, func(*cpu) {}},
+	command{"LD C, #", 0x0E, 1, 8, func(c *cpu) {
+		c.c.set(c.inst[1])
+	}},
 	command{"", 0x0F, 0, 0, func(*cpu) {}},
 	command{"", 0x10, 0, 0, func(*cpu) {}},
 	command{"", 0x11, 0, 0, func(*cpu) {}},
@@ -44,7 +50,9 @@ var commandTable = []command{
 	command{"", 0x15, 0, 0, func(*cpu) {}},
 	command{"", 0x16, 0, 0, func(*cpu) {}},
 	command{"", 0x17, 0, 0, func(*cpu) {}},
-	command{"", 0x18, 0, 0, func(*cpu) {}},
+	command{"JR n", 0x18, 1, 8, func(c *cpu) {
+		c.jr(int8(c.inst[1]))
+	}},
 	command{"", 0x19, 0, 0, func(*cpu) {}},
 	command{"", 0x1A, 0, 0, func(*cpu) {}},
 	command{"", 0x1B, 0, 0, func(*cpu) {}},
@@ -53,17 +61,11 @@ var commandTable = []command{
 	command{"", 0x1E, 0, 0, func(*cpu) {}},
 	command{"", 0x1F, 0, 0, func(*cpu) {}},
 	command{"JR NZ, *", 0x20, 1, 8, func(c *cpu) {
-		if c.f.getFlag(flagZ) == false {
-			v := int(c.inst[1])
-			if v < 0 {
-				v = -v
-				c.pc -= register16(v)
-				return
-			}
-			c.pc += register16(v)
-		}
+		c.jrNF(flagZ, int8(c.inst[1]))
 	}},
-	command{"", 0x21, 0, 0, func(*cpu) {}},
+	command{"LD HL, nn", 0x21, 2, 12, func(c *cpu) {
+		c.h.setWord(bytesToWord(c.inst[2], c.inst[1]))
+	}},
 	command{"", 0x22, 0, 0, func(*cpu) {}},
 	command{"", 0x23, 0, 0, func(*cpu) {}},
 	command{"", 0x24, 0, 0, func(*cpu) {}},
@@ -79,12 +81,19 @@ var commandTable = []command{
 	command{"", 0x2E, 0, 0, func(*cpu) {}},
 	command{"", 0x2F, 0, 0, func(*cpu) {}},
 	command{"", 0x30, 0, 0, func(*cpu) {}},
-	command{"", 0x31, 0, 0, func(*cpu) {}},
-	command{"", 0x32, 0, 0, func(*cpu) {}},
+	command{"LD SP, nn", 0x31, 2, 12, func(c *cpu) {
+		c.sp = register16(bytesToWord(c.inst[2], c.inst[1]))
+	}},
+	command{"LDD (HL), A", 0x32, 0, 8, func(c *cpu) {
+		c.mc.writeByte(Uint16(c.h.getWord()), c.a.get())
+		c.h.setWord(c.h.getWord() - 1)
+	}},
 	command{"", 0x33, 0, 0, func(*cpu) {}},
 	command{"", 0x34, 0, 0, func(*cpu) {}},
 	command{"", 0x35, 0, 0, func(*cpu) {}},
-	command{"", 0x36, 0, 0, func(*cpu) {}},
+	command{"LD (HL), n", 0x36, 1, 12, func(c *cpu) {
+		c.mc.writeByte(Uint16(c.h.getWord()), c.inst[1])
+	}},
 	command{"", 0x37, 0, 0, func(*cpu) {}},
 	command{"", 0x38, 0, 0, func(*cpu) {}},
 	command{"", 0x39, 0, 0, func(*cpu) {}},

@@ -101,6 +101,18 @@ func (c *cpu) xor(a, b uint8) uint8 {
 	return r
 }
 
+func (c *cpu) dec(a uint8) uint8 {
+    r := a - 1
+    if r == 0 {
+        c.f.setFlag(flagZ)
+    }
+    c.f.setFlag(flagN)
+    if a&0x0F >= 1 {
+        c.f.setFlag(flagH)
+    }
+    return r
+}
+
 func (c *cpu) sub(a, b uint8) uint8 {
 	r := a - b
 	c.f.set(0)
@@ -130,6 +142,26 @@ func (c *cpu) add(a, b uint8) uint8 {
 		c.f.setFlag(flagC)
 	}
 	return r
+}
+
+func (c *cpu) jrF(f uint8, n int8) {
+	if c.f.getFlag(f) == true {
+		c.jr(n)
+	}
+}
+
+func (c *cpu) jrNF(f uint8, n int8) {
+	if c.f.getFlag(f) == false {
+		c.jr(n)
+	}
+}
+
+func (c *cpu) jr(n int8) {
+	if n < 0 {
+		c.pc += register16(-n)
+		return
+	}
+	c.pc += register16(n)
 }
 
 /*
