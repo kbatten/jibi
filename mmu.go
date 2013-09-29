@@ -1,15 +1,15 @@
 package main
 
-import (
-//	"fmt"
-)
+import ()
 
 type mmu struct {
-	rom  memoryDevice // 32k
-	vram memoryDevice // 8k
-	eram memoryDevice // 8k
-	wram memoryDevice // 8k
-	iram memoryDevice // 8k
+	rom    memoryDevice // 0000-7FFF 32k
+	vram   memoryDevice // 8000-9FFF 8k
+	eram   memoryDevice // A000-BFFF 8k
+	wram   memoryDevice // C000-DFFF 8k
+	sprite memoryDevice // FE00-FE9F
+	io     memoryDevice // FF00-FF7F
+	zero   memoryDevice // FF80-FFFF
 }
 
 type memoryDevice interface {
@@ -56,16 +56,17 @@ func (r *romModule) readByte(addr addressInterface) uint8 {
 }
 
 func (r *romModule) writeByte(addressInterface, uint8) {
-	// nop
 }
 
-func newMmu(cart cartridge) mmu {
+func newMmu(cart cartridge, vid video) mmu {
 	mc := mmu{
-		rom:  cart,
-		vram: newRamModule(0x2000, nil),
-		eram: newRamModule(0x2000, nil),
-		wram: newRamModule(0x2000, nil),
-		iram: newRamModule(0x2000, nil)}
+		rom:    cart,
+		vram:   vid,
+		eram:   newRamModule(0x2000, nil),
+		wram:   newRamModule(0x2000, nil),
+		sprite: newRamModule(0xA0, nil),
+		io:     newRamModule(0x4D, nil),
+		zero:   newRamModule(0x80, nil)}
 	return mc
 }
 
@@ -77,25 +78,37 @@ type address uint16
 
 func (u address) Uint16() uint16 { return uint16(u) }
 
+func (mc mmu) String() string {
+	return "<mmu>"
+}
+
 func (mc mmu) readByte(addr addressInterface) uint8 {
 	a := addr.Uint16()
-	if a < 0x8000 {
+	if 0 <= a && a < 0x8000 {
 		return mc.rom.readByte(address(a))
 	}
-	a -= 0x8000
-	if a < 0x2000 {
-		return mc.vram.readByte(address(a))
+	if 0x8000 <= a && a < 0xA000 {
+		return mc.vram.readByte(address(a - 0x8000))
 	}
-	a -= 0x2000
-	if a < 0x2000 {
-		return mc.eram.readByte(address(a))
+	if 0xA000 <= a && a < 0xC000 { // switchable ram
+		return mc.eram.readByte(address(a - 0xA000))
 	}
-	a -= 0x2000
-	if a < 0x2000 {
-		return mc.wram.readByte(address(a))
+	if 0xC000 <= a && a < 0xE000 {
+		return mc.wram.readByte(address(a - 0xC000))
 	}
-	a -= 0x2000
-	return mc.iram.readByte(address(a))
+	if 0xE000 <= a && a < 0xFE00 { // echo wram
+		return mc.wram.readByte(address(a - 0xE000))
+	}
+	if 0xFE00 <= a && a < 0xFEA0 {
+		return mc.sprite.readByte(address(a - 0xFE00))
+	}
+	if 0xFF00 <= a && a < 0xFF4D {
+		return mc.io.readByte(address(a - 0xFF00))
+	}
+	if 0xFF80 <= a && a <= 0xFFFF {
+		return mc.zero.readByte(address(a - 0xFF80))
+	}
+	return 0
 }
 
 func (mc mmu) readWord(addr address) uint16 {
@@ -106,27 +119,30 @@ func (mc mmu) readWord(addr address) uint16 {
 
 func (mc mmu) writeByte(addr addressInterface, b uint8) {
 	a := addr.Uint16()
-	if a < 0x8000 {
+	if 0 <= a && a < 0x8000 {
 		mc.rom.writeByte(address(a), b)
-		return
 	}
-	a -= 0x8000
-	if a < 0x2000 {
-		mc.vram.writeByte(address(a), b)
-		return
+	if 0x8000 <= a && a < 0xA000 {
+		mc.vram.writeByte(address(a-0x8000), b)
 	}
-	a -= 0x2000
-	if a < 0x2000 {
-		mc.eram.writeByte(address(a), b)
-		return
+	if 0xA000 <= a && a < 0xC000 { // switchable ram
+		mc.eram.writeByte(address(a-0xA000), b)
 	}
-	a -= 0x2000
-	if a < 0x2000 {
-		mc.wram.writeByte(address(a), b)
-		return
+	if 0xC000 <= a && a < 0xE000 {
+		mc.wram.writeByte(address(a-0xC000), b)
 	}
-	a -= 0x2000
-	mc.iram.writeByte(address(a), b)
+	if 0xE000 <= a && a < 0xFE00 { // echo wram
+		mc.wram.writeByte(address(a-0xE000), b)
+	}
+	if 0xFE00 <= a && a < 0xFEA0 {
+		mc.sprite.writeByte(address(a-0xFE00), b)
+	}
+	if 0xFF00 <= a && a < 0xFF4D {
+		mc.io.writeByte(address(a-0xFF00), b)
+	}
+	if 0xFF80 <= a && a <= 0xFFFF {
+		mc.zero.writeByte(address(a-0xFF80), b)
+	}
 }
 
 func (mc mmu) writeWord(addr address, w uint16) {

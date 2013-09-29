@@ -37,7 +37,7 @@ const (
 	flagC = 0x10
 )
 
-func newCpu(cart cartridge) *cpu {
+func newCpu(mc mmu) *cpu {
 	// use internal clock
 	// 1 machine cycle = 4 clock cycles
 	// machine cycles: 1.05MHz nop: 1 cycle
@@ -46,9 +46,6 @@ func newCpu(cart cartridge) *cpu {
 	period := time.Duration(1e9 / hz)
 	ticker := time.NewTicker(period)
 	clock := ticker.C
-
-	// internal mmu
-	mc := newMmu(cart)
 
 	f := newFlagsRegister8()
 	a := newRegister8(&f)
