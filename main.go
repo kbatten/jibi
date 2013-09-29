@@ -12,21 +12,20 @@ func main() {
 	rom := readRomFile(args["<rom>"].(string))
 
 	cart := newCartridge(rom)
-	video := newVideo()
-	m := newMmu(cart, video)
+	v := newVideo()
+	m := newMmu(cart, v)
 	c := newCpu(m)
 
 	fmt.Println(cart)
-	fmt.Println(video)
+	fmt.Println(v)
 	fmt.Println(m)
 	fmt.Println(c)
-	/*
-		for { //i := 0; i < 5; i++ {
-			c.loop()
-			fmt.Println(c)
-			if commandTable[c.inst[0]].t == 0 {
-				panic("unknown opcode")
-			}
+	for { //i := 0; i < 5; i++ {
+		t := c.step()
+		v.step(t)
+		//fmt.Println(c)
+		if commandTable[c.inst[0]].t == 0 {
+			panic("unknown opcode")
 		}
-	*/
+	}
 }

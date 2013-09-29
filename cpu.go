@@ -268,13 +268,16 @@ func (c *cpu) fetch() {
 func (c *cpu) execute() {
 	opcode := c.inst[0]
 	commandTable[opcode].f(c)
+	c.t += commandTable[opcode].t
+	c.m += commandTable[opcode].t * 4
 }
 
-func (c *cpu) loop() {
-	c.fetch()   // load next instruction into c.inst
-	c.execute() // execute c.inst instruction
-
+func (c *cpu) step() uint8 {
 	// reset clocks
 	c.m = 0
 	c.t = 0
+	c.fetch()   // load next instruction into c.inst
+	c.execute() // execute c.inst instruction
+
+	return c.t
 }

@@ -3,13 +3,13 @@ package main
 import ()
 
 type mmu struct {
-	rom    memoryDevice // 0000-7FFF 32k
-	vram   memoryDevice // 8000-9FFF 8k
-	eram   memoryDevice // A000-BFFF 8k
-	wram   memoryDevice // C000-DFFF 8k
-	sprite memoryDevice // FE00-FE9F
-	io     memoryDevice // FF00-FF7F
-	zero   memoryDevice // FF80-FFFF
+	rom  memoryDevice // 0000-7FFF 32k
+	vram memoryDevice // 8000-9FFF 8k
+	eram memoryDevice // A000-BFFF 8k
+	wram memoryDevice // C000-DFFF 8k
+	oam  memoryDevice // FE00-FE9F
+	io   memoryDevice // FF00-FF7F
+	zero memoryDevice // FF80-FFFF
 }
 
 type memoryDevice interface {
@@ -60,13 +60,13 @@ func (r *romModule) writeByte(addressInterface, uint8) {
 
 func newMmu(cart cartridge, vid video) mmu {
 	mc := mmu{
-		rom:    cart,
-		vram:   vid,
-		eram:   newRamModule(0x2000, nil),
-		wram:   newRamModule(0x2000, nil),
-		sprite: newRamModule(0xA0, nil),
-		io:     newRamModule(0x4D, nil),
-		zero:   newRamModule(0x80, nil)}
+		rom:  cart,
+		vram: vid,
+		eram: cart.eram,
+		wram: newRamModule(0x2000, nil),
+		oam:  vid.oam,
+		io:   newRamModule(0x4D, nil),
+		zero: newRamModule(0x80, nil)}
 	return mc
 }
 
@@ -100,7 +100,7 @@ func (mc mmu) readByte(addr addressInterface) uint8 {
 		return mc.wram.readByte(address(a - 0xE000))
 	}
 	if 0xFE00 <= a && a < 0xFEA0 {
-		return mc.sprite.readByte(address(a - 0xFE00))
+		return mc.oam.readByte(address(a - 0xFE00))
 	}
 	if 0xFF00 <= a && a < 0xFF4D {
 		return mc.io.readByte(address(a - 0xFF00))
@@ -135,7 +135,7 @@ func (mc mmu) writeByte(addr addressInterface, b uint8) {
 		mc.wram.writeByte(address(a-0xE000), b)
 	}
 	if 0xFE00 <= a && a < 0xFEA0 {
-		mc.sprite.writeByte(address(a-0xFE00), b)
+		mc.oam.writeByte(address(a-0xFE00), b)
 	}
 	if 0xFF00 <= a && a < 0xFF4D {
 		mc.io.writeByte(address(a-0xFF00), b)

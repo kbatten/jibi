@@ -7,6 +7,8 @@ import (
 type cartridge struct {
 	rom []uint8
 
+	eram memoryDevice
+
 	// rom info
 	name    string
 	color   bool
@@ -20,6 +22,8 @@ func newCartridge(rom []uint8) cartridge {
 	romBanks := make([]uint8, 0x8000)
 	copy(romBanks, rom)
 
+	eram := newRamModule(0x2000, nil)
+
 	name := ""
 	for _, c := range rom[0x0134 : 0x0142+1] {
 		if c == 0 {
@@ -32,7 +36,7 @@ func newCartridge(rom []uint8) cartridge {
 	ct := cartridgeType(rom[0x0147])
 	romSize := cartridgeRomSize(rom[0x0148])
 	ramSize := cartridgeRamSize(rom[0x0149])
-	return cartridge{romBanks, name, color, super, ct, romSize, ramSize}
+	return cartridge{romBanks, eram, name, color, super, ct, romSize, ramSize}
 }
 
 func (c cartridge) readByte(addr addressInterface) uint8 {
