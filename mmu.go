@@ -3,6 +3,7 @@ package main
 import ()
 
 type mmu struct {
+	bios memoryDevice // unloadable, maps to first 0xFF bytes when loaded
 	rom  memoryDevice // 0000-7FFF 32k
 	vram memoryDevice // 8000-9FFF 8k
 	eram memoryDevice // A000-BFFF 8k
@@ -10,6 +11,8 @@ type mmu struct {
 	oam  memoryDevice // FE00-FE9F
 	io   memoryDevice // FF00-FF7F
 	zero memoryDevice // FF80-FFFF
+
+	outBios *bool
 }
 
 type memoryDevice interface {
@@ -58,15 +61,17 @@ func (r *romModule) readByte(addr addressInterface) uint8 {
 func (r *romModule) writeByte(addressInterface, uint8) {
 }
 
-func newMmu(cart cartridge, vid video) mmu {
+func newMmu(bios memoryDevice, cart cartridge, vid video) mmu {
 	mc := mmu{
-		rom:  cart,
-		vram: vid,
-		eram: cart.eram,
-		wram: newRamModule(0x2000, nil),
-		oam:  vid.oam,
-		io:   newRamModule(0x4D, nil),
-		zero: newRamModule(0x80, nil)}
+		bios:    bios,
+		rom:     cart,
+		vram:    vid,
+		eram:    cart.eram,
+		wram:    newRamModule(0x2000, nil),
+		oam:     vid.oam,
+		io:      newRamModule(0x4D, nil),
+		zero:    newRamModule(0x80, nil),
+		outBios: new(bool)}
 	return mc
 }
 
@@ -82,30 +87,30 @@ func (mc mmu) String() string {
 	return "<mmu>"
 }
 
+func (mc mmu) unloadBios() {
+	*mc.outBios = true
+}
+
 func (mc mmu) readByte(addr addressInterface) uint8 {
 	a := addr.Uint16()
-	if 0 <= a && a < 0x8000 {
+
+	if 0 <= a && a < 0xFF && !*mc.outBios {
+		return mc.bios.readByte(address(a))
+	} else if 0 <= a && a < 0x8000 {
 		return mc.rom.readByte(address(a))
-	}
-	if 0x8000 <= a && a < 0xA000 {
+	} else if 0x8000 <= a && a < 0xA000 {
 		return mc.vram.readByte(address(a - 0x8000))
-	}
-	if 0xA000 <= a && a < 0xC000 { // switchable ram
+	} else if 0xA000 <= a && a < 0xC000 { // switchable ram
 		return mc.eram.readByte(address(a - 0xA000))
-	}
-	if 0xC000 <= a && a < 0xE000 {
+	} else if 0xC000 <= a && a < 0xE000 {
 		return mc.wram.readByte(address(a - 0xC000))
-	}
-	if 0xE000 <= a && a < 0xFE00 { // echo wram
+	} else if 0xE000 <= a && a < 0xFE00 { // echo wram
 		return mc.wram.readByte(address(a - 0xE000))
-	}
-	if 0xFE00 <= a && a < 0xFEA0 {
+	} else if 0xFE00 <= a && a < 0xFEA0 {
 		return mc.oam.readByte(address(a - 0xFE00))
-	}
-	if 0xFF00 <= a && a < 0xFF4D {
+	} else if 0xFF00 <= a && a < 0xFF4D {
 		return mc.io.readByte(address(a - 0xFF00))
-	}
-	if 0xFF80 <= a && a <= 0xFFFF {
+	} else if 0xFF80 <= a && a <= 0xFFFF {
 		return mc.zero.readByte(address(a - 0xFF80))
 	}
 	return 0
@@ -119,28 +124,23 @@ func (mc mmu) readWord(addr address) uint16 {
 
 func (mc mmu) writeByte(addr addressInterface, b uint8) {
 	a := addr.Uint16()
-	if 0 <= a && a < 0x8000 {
+	if 0 <= a && a < 0xFF && !*mc.outBios {
+		mc.bios.writeByte(address(a), b)
+	} else if 0 <= a && a < 0x8000 {
 		mc.rom.writeByte(address(a), b)
-	}
-	if 0x8000 <= a && a < 0xA000 {
+	} else if 0x8000 <= a && a < 0xA000 {
 		mc.vram.writeByte(address(a-0x8000), b)
-	}
-	if 0xA000 <= a && a < 0xC000 { // switchable ram
+	} else if 0xA000 <= a && a < 0xC000 { // switchable ram
 		mc.eram.writeByte(address(a-0xA000), b)
-	}
-	if 0xC000 <= a && a < 0xE000 {
+	} else if 0xC000 <= a && a < 0xE000 {
 		mc.wram.writeByte(address(a-0xC000), b)
-	}
-	if 0xE000 <= a && a < 0xFE00 { // echo wram
+	} else if 0xE000 <= a && a < 0xFE00 { // echo wram
 		mc.wram.writeByte(address(a-0xE000), b)
-	}
-	if 0xFE00 <= a && a < 0xFEA0 {
+	} else if 0xFE00 <= a && a < 0xFEA0 {
 		mc.oam.writeByte(address(a-0xFE00), b)
-	}
-	if 0xFF00 <= a && a < 0xFF4D {
+	} else if 0xFF00 <= a && a < 0xFF4D {
 		mc.io.writeByte(address(a-0xFF00), b)
-	}
-	if 0xFF80 <= a && a <= 0xFFFF {
+	} else if 0xFF80 <= a && a <= 0xFFFF {
 		mc.zero.writeByte(address(a-0xFF80), b)
 	}
 }

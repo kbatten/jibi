@@ -34,12 +34,10 @@ func newVideo() video {
 }
 
 func (v video) readByte(addr addressInterface) uint8 {
-	//fmt.Println("read:", addr, v.ram.readByte(addr))
 	return v.ram.readByte(addr)
 }
 
 func (v video) writeByte(addr addressInterface, n uint8) {
-	//fmt.Printf("write: 0x%04X 0x%02X\n", 0x8000+addr.Uint16(), n)
 	v.ram.writeByte(addr, n)
 }
 
@@ -87,9 +85,9 @@ func (v video) drawLine() {
 	}
 	if *v.line < 120 {
 		if *v.line%2 == 0 {
-			fmt.Print("\x1B[160D", line)
+			//fmt.Print("\x1B[160D", line)
 		} else {
-			fmt.Println("\x1B[160D", line)
+			//fmt.Println("\x1B[160D", line)
 		}
 	}
 }
@@ -115,7 +113,7 @@ func (v video) paintTile(tileData []uint8, x, y uint8) {
 
 func (v video) blank() {
 	// move to 0,0
-	fmt.Print("\x1B[H")
+	//fmt.Print("\x1B[H")
 
 	//v.paintTile([]uint8{0x7C, 0x7C, 0x00, 0xC6, 0xC6, 0x00, 0x00, 0xFE,
 	//	0xC6, 0xC6, 0x00, 0xC6, 0xC6, 0x00, 0x00, 0x00}, 4, 4)
