@@ -57,15 +57,17 @@ func newCpu(mc mmu) *cpu {
 	h := newRegister8(&l)
 
 	return &cpu{a: a, b: b, c: c, d: d, e: e, f: f, l: l, h: h,
-		sp: 0xFFFE, mTicker: ticker, mClock: clock, mc: mc}
+		sp: 0xFFFE, pc: 0x0000, mTicker: ticker, mClock: clock, mc: mc}
 }
 
 func (c *cpu) String() string {
 	return fmt.Sprintf(`%v
     a:%v b:%v c:%v d:%v e:%v f:%v h:%v l:%v
-    af:0x%04X bc:0x%04X de:0x%04X hl:0x%04X sp:%v pc:%v`,
+    af:0x%04X bc:0x%04X de:0x%04X hl:0x%04X sp:%v pc:%v
+	%s`,
 		c.inst, c.a, c.b, c.c, c.d, c.e, c.f, c.h, c.l,
-		c.a.getWord(), c.b.getWord(), c.d.getWord(), c.h.getWord(), c.sp, c.pc)
+		c.a.getWord(), c.b.getWord(), c.d.getWord(), c.h.getWord(), c.sp, c.pc,
+		c.f.flagsString())
 }
 
 func (c *cpu) reset() {
@@ -78,9 +80,20 @@ func (c *cpu) reset() {
 	c.h.set(0)
 	c.l.set(0)
 	c.sp = 0xFFFE
-	c.pc = 0
+	c.pc = 0x0000
 	c.m = 0
 	c.t = 0
+}
+
+func (c *cpu) bit(b, n uint8) {
+	set := 1<<b&n == 1<<b
+	if !set {
+		c.f.setFlag(flagZ)
+	} else {
+		c.f.resetFlag(flagZ)
+	}
+	c.f.resetFlag(flagN)
+	c.f.setFlag(flagH)
 }
 
 func (c *cpu) xor(a, b uint8) uint8 {
@@ -115,10 +128,14 @@ func (c *cpu) inc(a uint8) uint8 {
 	r := a + 1
 	if r == 0 {
 		c.f.setFlag(flagZ)
+	} else {
+		c.f.resetFlag(flagZ)
 	}
-	c.f.setFlag(flagN)
+	c.f.resetFlag(flagN)
 	if a&0x0F == 0x0F {
 		c.f.setFlag(flagH)
+	} else {
+		c.f.resetFlag(flagH)
 	}
 	return r
 }
@@ -126,21 +143,37 @@ func (c *cpu) inc(a uint8) uint8 {
 func (c *cpu) dec(a uint8) uint8 {
 	r := a - 1
 	if r == 0 {
+		c.f.setFlag(flagZ)
+	} else {
 		c.f.resetFlag(flagZ)
 	}
 	c.f.setFlag(flagN)
-	if a&0x0F == 0x0F {
+	if a&0x0F != 0x0F {
 		c.f.setFlag(flagH)
+	} else {
+		c.f.resetFlag(flagH)
 	}
 	return r
 }
 
-func (c *cpu) subC(a, b uint8) uint8 {
+func (c *cpu) sbc(a, b uint8) uint8 {
 	carry := uint8(0)
 	if c.f.getFlag(flagC) {
 		carry = 1
 	}
-	return c.sub(a, b+carry)
+	r := a - (b + carry)
+	c.f.set(0)
+	if r == 0 {
+		c.f.setFlag(flagZ)
+	}
+	c.f.setFlag(flagN)
+	if a&0x0F >= (b&0x0F + carry) {
+		c.f.setFlag(flagH)
+	}
+	if a >= b+carry {
+		c.f.setFlag(flagC)
+	}
+	return r
 }
 
 func (c *cpu) sub(a, b uint8) uint8 {
@@ -150,10 +183,10 @@ func (c *cpu) sub(a, b uint8) uint8 {
 		c.f.setFlag(flagZ)
 	}
 	c.f.setFlag(flagN)
-	if a&0x0F < b&0x0F {
+	if a&0x0F >= b&0x0F {
 		c.f.setFlag(flagH)
 	}
-	if a < b {
+	if a >= b {
 		c.f.setFlag(flagC)
 	}
 	return r
@@ -166,20 +199,31 @@ func (c *cpu) addWordR(a uint16, b int8) uint16 {
 	if b < 0 {
 		bu = uint8(-b)
 		l = c.sub(l, bu)
-		h = c.subC(h, 0)
+		h = c.sbc(h, 0)
 		return uint16(h)<<8 + uint16(l)
 	}
 	l = c.add(l, bu)
-	h = c.addC(h, 0)
+	h = c.adc(h, 0)
 	return uint16(h)<<8 + uint16(l)
 }
 
-func (c *cpu) addC(a, b uint8) uint8 {
+func (c *cpu) adc(a, b uint8) uint8 {
 	carry := uint8(0)
 	if c.f.getFlag(flagC) {
 		carry = 1
 	}
-	return c.add(a, b+carry)
+	r := a + b + carry
+	c.f.set(0)
+	if r == 0 {
+		c.f.setFlag(flagZ)
+	}
+	if a&0x0F+b&0x0F+carry > 0x0F {
+		c.f.setFlag(flagH)
+	}
+	if uint16(a)+uint16(b)+uint16(carry) > 0xFF {
+		c.f.setFlag(flagC)
+	}
+	return r
 }
 
 func (c *cpu) add(a, b uint8) uint8 {
@@ -197,6 +241,7 @@ func (c *cpu) add(a, b uint8) uint8 {
 	return r
 }
 
+// rotate right through carry (yes, naming is odd)
 func (c *cpu) rr(n uint8) uint8 {
 	r := n >> 1
 	if c.f.getFlag(flagC) { // old carry is bit 7
@@ -207,6 +252,22 @@ func (c *cpu) rr(n uint8) uint8 {
 		c.f.setFlag(flagZ)
 	}
 	if n&0x01 == 0x01 { // carry is old bit 0
+		c.f.setFlag(flagC)
+	}
+	return r
+}
+
+// rotate left through carry
+func (c *cpu) rl(n uint8) uint8 {
+	r := n << 1
+	if c.f.getFlag(flagC) { // old carry is bit 0
+		r += 1
+	}
+	c.f.set(0)
+	if r == 0 {
+		c.f.setFlag(flagZ)
+	}
+	if n&0x80 == 0x80 { // carry is old bit 7
 		c.f.setFlag(flagC)
 	}
 	return r
@@ -236,6 +297,12 @@ func (c *cpu) jp(addr address) {
 	c.pc = register16(addr)
 }
 
+func (c *cpu) callF(f uint8, addr address) {
+	if c.f.getFlag(f) == true {
+		c.call(addr)
+	}
+}
+
 func (c *cpu) call(addr address) {
 	c.pushWord(uint16(c.pc))
 	c.jp(addr)
@@ -253,23 +320,30 @@ func (c *cpu) pushWord(w uint16) {
 }
 
 func (c *cpu) fetch() {
-	opcode := c.mc.readByte(c.pc)
+	op := opcode(c.mc.readByte(c.pc))
 	c.pc++
-	command := commandTable[opcode]
-	inst := newInstruction(opcode)
-
-	for i := uint8(0); i < command.b; i++ {
-		inst = append(inst, c.mc.readByte(c.pc))
+	if op == 0xCB {
+		op = opcode(0xCB00 + uint16(c.mc.readByte(c.pc)))
 		c.pc++
 	}
-	c.inst = inst
+	command := commandTable[op]
+	c.inst = newInstruction(op)
+
+	for i := uint8(0); i < command.b; i++ {
+		c.inst.p = append(c.inst.p, c.mc.readByte(c.pc))
+		c.pc++
+	}
 }
 
 func (c *cpu) execute() {
-	opcode := c.inst[0]
-	commandTable[opcode].f(c)
-	c.t += commandTable[opcode].t
-	c.m += commandTable[opcode].t * 4
+	if c.pc == 0x0100 {
+		c.mc.unloadBios()
+	}
+	if cmd, ok := commandTable[c.inst.o]; ok {
+		cmd.f(c)
+		c.t += cmd.t
+		c.m += cmd.t * 4
+	}
 }
 
 func (c *cpu) step() uint8 {

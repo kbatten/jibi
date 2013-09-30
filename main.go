@@ -43,7 +43,7 @@ func main() {
 		t := c.step()
 		v.step(t)
 		fmt.Println(c)
-		if commandTable[c.inst[0]].t == 0 {
+		if commandTable[c.inst.o].t == 0 {
 			panic("unknown opcode")
 		}
 	}

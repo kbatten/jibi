@@ -31,6 +31,26 @@ func (r register8) setWord(u uint16) {
 	r.lrp.set(l)
 }
 
+func (r register8) flagsString() string {
+	fZ := 0
+	fN := 0
+	fH := 0
+	fC := 0
+	if r.getFlag(flagZ) {
+		fZ = 1
+	}
+	if r.getFlag(flagN) {
+		fN = 1
+	}
+	if r.getFlag(flagH) {
+		fH = 1
+	}
+	if r.getFlag(flagC) {
+		fC = 1
+	}
+	return fmt.Sprintf("zero:%d sub:%d half:%d carry:%d", fZ, fN, fH, fC)
+}
+
 func (r register8) getWord() uint16 {
 	return bytesToWord(r.get(), r.lrp.get())
 }

@@ -6,7 +6,6 @@ import (
 
 type command struct {
 	s string
-	o uint8 // opcode
 	b uint8 // number of immediate bytes
 	t uint8 // clock cycles
 	f func(*cpu)
@@ -16,86 +15,108 @@ func (c command) String() string {
 	return c.s
 }
 
-var commandTable = []command{
-	command{"NOP", 0x00, 0, 4, func(*cpu) {}},
-	command{"LD BC, nn", 0x01, 2, 12, func(c *cpu) {
-		c.c.set(c.inst[1])
-		c.b.set(c.inst[2])
+type opcode uint16
+
+func (o opcode) String() string {
+	if c, ok := commandTable[o]; ok {
+		if len(c.s) > 0 {
+			return c.s
+		}
+	}
+	return fmt.Sprintf("0x%02X", uint16(o))
+}
+
+var commandTable = map[opcode]command{
+	0x00: command{"NOP", 0, 4, func(*cpu) {}},
+	0x01: command{"LD BC, nn", 2, 12, func(c *cpu) {
+		c.c.set(c.inst.p[0])
+		c.b.set(c.inst.p[1])
 	}},
-	command{"LD (BC), A", 0x02, 0, 8, func(c *cpu) {
+	0x02: command{"LD (BC), A", 0, 8, func(c *cpu) {
 		c.mc.writeByte(address(c.b.getWord()), c.a.get())
 	}},
-	command{"INC BC", 0x03, 0, 8, func(c *cpu) {
+	0x03: command{"INC BC", 0, 8, func(c *cpu) {
 		c.b.setWord(c.b.getWord() + 1)
 	}},
-	command{"", 0x04, 0, 0, func(c *cpu) {}},
-	command{"DEC B", 0x05, 0, 4, func(c *cpu) {
+	0x04: command{"INC B", 0, 4, func(c *cpu) {
+		c.b.set(c.inc(c.b.get()))
+	}},
+	0x05: command{"DEC B", 0, 4, func(c *cpu) {
 		c.b.set(c.dec(c.b.get()))
 	}},
-	command{"LD B, #", 0x06, 1, 8, func(c *cpu) {
-		c.b.set(c.inst[1])
+	0x06: command{"LD B, #", 1, 8, func(c *cpu) {
+		c.b.set(c.inst.p[0])
 	}},
-	command{"", 0x07, 0, 0, func(c *cpu) {}},
-	command{"", 0x08, 0, 0, func(c *cpu) {}},
-	command{"", 0x09, 0, 0, func(c *cpu) {}},
-	command{"", 0x0A, 0, 0, func(c *cpu) {}},
-	command{"DEC BC", 0x0B, 0, 8, func(c *cpu) {
+	0x07: command{"RLCA", 4, 0, func(c *cpu) {
+		panic("")
+		//c.a.set(c.rlc(c.a.get()))
+	}},
+	0x08: command{"LD (nn), SP", 2, 20, func(c *cpu) {
+		c.mc.writeWord(bytesToAddress(c.inst.p[1], c.inst.p[0]), uint16(c.sp))
+	}},
+	0x09: command{"", 0, 0, func(c *cpu) {}},
+	0x0A: command{"", 0, 0, func(c *cpu) {}},
+	0x0B: command{"DEC BC", 0, 8, func(c *cpu) {
 		c.b.setWord(c.b.getWord() - 1)
 	}},
-	command{"INC C", 0x0C, 0, 4, func(c *cpu) {
+	0x0C: command{"INC C", 0, 4, func(c *cpu) {
 		c.c.set(c.inc(c.c.get()))
 	}},
-	command{"DEC C", 0x0D, 0, 4, func(c *cpu) {
+	0x0D: command{"DEC C", 0, 4, func(c *cpu) {
 		c.c.set(c.dec(c.c.get()))
 	}},
-	command{"LD C, #", 0x0E, 1, 8, func(c *cpu) {
-		c.c.set(c.inst[1])
+	0x0E: command{"LD C, #", 1, 8, func(c *cpu) {
+		c.c.set(c.inst.p[0])
 	}},
-	command{"", 0x0F, 0, 0, func(c *cpu) {}},
-	command{"", 0x10, 0, 0, func(c *cpu) {}},
-	command{"LD DE, nn", 0x11, 2, 12, func(c *cpu) {
-		c.d.setWord(bytesToWord(c.inst[2], c.inst[1]))
+	0x0F: command{"", 0, 0, func(c *cpu) {}},
+	0x10: command{"", 0, 0, func(c *cpu) {}},
+	0x11: command{"LD DE, nn", 2, 12, func(c *cpu) {
+		c.d.setWord(bytesToWord(c.inst.p[1], c.inst.p[0]))
 	}},
-	command{"LD (DE), A", 0x12, 0, 8, func(c *cpu) {
+	0x12: command{"LD (DE), A", 0, 8, func(c *cpu) {
 		c.mc.writeByte(address(c.d.getWord()), c.a.get())
 	}},
-	command{"INC DE", 0x13, 0, 8, func(c *cpu) {
+	0x13: command{"INC DE", 0, 8, func(c *cpu) {
 		c.d.setWord(c.d.getWord() + 1)
 	}},
-	command{"", 0x14, 0, 0, func(c *cpu) {}},
-	command{"", 0x15, 0, 0, func(c *cpu) {}},
-	command{"LD D, #", 0x16, 1, 8, func(c *cpu) {
-		c.d.set(c.inst[1])
+	0x14: command{"", 0, 0, func(c *cpu) {}},
+	0x15: command{"", 0, 0, func(c *cpu) {}},
+	0x16: command{"LD D, #", 1, 8, func(c *cpu) {
+		c.d.set(c.inst.p[0])
 	}},
-	command{"", 0x17, 0, 0, func(c *cpu) {}},
-	command{"JR n", 0x18, 1, 8, func(c *cpu) {
-		c.jr(int8(c.inst[1]))
+	0x17: command{"RLA", 0, 4, func(c *cpu) {
+		c.a.set(c.rl(c.a.get()))
 	}},
-	command{"", 0x19, 0, 0, func(c *cpu) {}},
-	command{"", 0x1A, 0, 0, func(c *cpu) {}},
-	command{"", 0x1B, 0, 0, func(c *cpu) {}},
-	command{"", 0x1C, 0, 0, func(c *cpu) {}},
-	command{"", 0x1D, 0, 0, func(c *cpu) {}},
-	command{"LD E, #", 0x1E, 1, 8, func(c *cpu) {
-		c.e.set(c.inst[1])
+	0x18: command{"JR n", 1, 8, func(c *cpu) {
+		c.jr(int8(c.inst.p[0]))
 	}},
-	command{"RRA", 0x1F, 0, 4, func(c *cpu) {
+	0x19: command{"", 0, 0, func(c *cpu) {}},
+	0x1A: command{"LD A, (DE)", 0, 8, func(c *cpu) {
+		c.a.set(c.mc.readByte(address(c.d.getWord())))
+	}},
+	0x1B: command{"", 0, 0, func(c *cpu) {}},
+	0x1C: command{"", 0, 0, func(c *cpu) {}},
+	0x1D: command{"", 0, 0, func(c *cpu) {}},
+	0x1E: command{"LD E, #", 1, 8, func(c *cpu) {
+		c.e.set(c.inst.p[0])
+	}},
+	0x1F: command{"RRA", 0, 4, func(c *cpu) {
 		c.a.set(c.rr(c.a.get()))
 	}},
-	command{"JR NZ, *", 0x20, 1, 8, func(c *cpu) {
-		c.jrNF(flagZ, int8(c.inst[1]))
+	0x20: command{"JR NZ, *", 1, 8, func(c *cpu) {
+		c.jrNF(flagZ, int8(c.inst.p[0]))
 	}},
-	command{"LD HL, nn", 0x21, 2, 12, func(c *cpu) {
-		c.h.setWord(bytesToWord(c.inst[2], c.inst[1]))
+	0x21: command{"LD HL, nn", 2, 12, func(c *cpu) {
+		c.h.setWord(bytesToWord(c.inst.p[1], c.inst.p[0]))
 	}},
-	command{"", 0x22, 0, 0, func(c *cpu) {}},
-	command{"", 0x23, 0, 0, func(c *cpu) {}},
-	command{"", 0x24, 0, 0, func(c *cpu) {}},
-	command{"", 0x25, 0, 0, func(c *cpu) {}},
-	command{"LD H, #", 0x26, 1, 8, func(c *cpu) {
-		c.h.set(c.inst[1])
+	0x22: command{"", 0, 0, func(c *cpu) {}},
+	0x23: command{"", 0, 0, func(c *cpu) {}},
+	0x24: command{"", 0, 0, func(c *cpu) {}},
+	0x25: command{"", 0, 0, func(c *cpu) {}},
+	0x26: command{"LD H, #", 1, 8, func(c *cpu) {
+		c.h.set(c.inst.p[0])
 	}},
-	command{"DAA", 0x27, 0, 4, func(c *cpu) {
+	0x27: command{"DAA", 0, 4, func(c *cpu) {
 		a := c.a.get()
 		if a&0x0F > 9 || c.f.getFlag(flagH) {
 			a += 0x06
@@ -106,255 +127,296 @@ var commandTable = []command{
 			c.f.setFlag(flagC)
 		}
 	}},
-	command{"", 0x28, 0, 0, func(c *cpu) {}},
-	command{"", 0x29, 0, 0, func(c *cpu) {}},
-	command{"LDI A, (HL)", 0x2A, 0, 8, func(c *cpu) {
+	0x28: command{"", 0, 0, func(c *cpu) {}},
+	0x29: command{"", 0, 0, func(c *cpu) {}},
+	0x2A: command{"LDI A, (HL)", 0, 8, func(c *cpu) {
 		c.a.set(c.mc.readByte(address(c.h.getWord())))
 		c.h.setWord(c.h.getWord() + 1)
 	}},
-	command{"", 0x2B, 0, 0, func(c *cpu) {}},
-	command{"", 0x2C, 0, 0, func(c *cpu) {}},
-	command{"", 0x2D, 0, 0, func(c *cpu) {}},
-	command{"LD L, #", 0x26, 1, 8, func(c *cpu) {
-		c.l.set(c.inst[1])
+	0x2B: command{"", 0, 0, func(c *cpu) {}},
+	0x2C: command{"", 0, 0, func(c *cpu) {}},
+	0x2D: command{"", 0, 0, func(c *cpu) {}},
+	0x2E: command{"LD L, #", 1, 8, func(c *cpu) {
+		c.l.set(c.inst.p[0])
 	}},
-	command{"", 0x2F, 0, 0, func(c *cpu) {}},
-	command{"", 0x30, 0, 0, func(c *cpu) {}},
-	command{"LD SP, nn", 0x31, 2, 12, func(c *cpu) {
-		c.sp = register16(bytesToWord(c.inst[2], c.inst[1]))
+	0x2F: command{"", 0, 0, func(c *cpu) {}},
+	0x30: command{"", 0, 0, func(c *cpu) {}},
+	0x31: command{"LD SP, nn", 2, 12, func(c *cpu) {
+		c.sp = register16(bytesToWord(c.inst.p[1], c.inst.p[0]))
 	}},
-	command{"LDD (HL), A", 0x32, 0, 8, func(c *cpu) {
+	0x32: command{"LDD (HL), A", 0, 8, func(c *cpu) {
 		c.mc.writeByte(address(c.h.getWord()), c.a.get())
 		c.h.setWord(c.h.getWord() - 1)
 	}},
-	command{"", 0x33, 0, 0, func(*cpu) {}},
-	command{"", 0x34, 0, 0, func(*cpu) {}},
-	command{"", 0x35, 0, 0, func(*cpu) {}},
-	command{"LD (HL), n", 0x36, 1, 12, func(c *cpu) {
-		c.mc.writeByte(address(c.h.getWord()), c.inst[1])
+	0x33: command{"", 0, 0, func(*cpu) {}},
+	0x34: command{"", 0, 0, func(*cpu) {}},
+	0x35: command{"", 0, 0, func(*cpu) {}},
+	0x36: command{"LD (HL), n", 1, 12, func(c *cpu) {
+		c.mc.writeByte(address(c.h.getWord()), c.inst.p[0])
 	}},
-	command{"", 0x37, 0, 0, func(*cpu) {}},
-	command{"", 0x38, 0, 0, func(*cpu) {}},
-	command{"", 0x39, 0, 0, func(*cpu) {}},
-	command{"", 0x3A, 0, 0, func(*cpu) {}},
-	command{"", 0x3B, 0, 0, func(*cpu) {}},
-	command{"", 0x3C, 0, 0, func(*cpu) {}},
-	command{"", 0x3D, 0, 0, func(*cpu) {}},
-	command{"LD A, #", 0x3E, 1, 8, func(c *cpu) {
-		c.a.set(c.inst[1])
+	0x37: command{"", 0, 0, func(*cpu) {}},
+	0x38: command{"", 0, 0, func(*cpu) {}},
+	0x39: command{"", 0, 0, func(*cpu) {}},
+	0x3A: command{"", 0, 0, func(*cpu) {}},
+	0x3B: command{"", 0, 0, func(*cpu) {}},
+	0x3C: command{"", 0, 0, func(*cpu) {}},
+	0x3D: command{"", 0, 0, func(*cpu) {}},
+	0x3E: command{"LD A, #", 1, 8, func(c *cpu) {
+		c.a.set(c.inst.p[0])
 	}},
-	command{"", 0x3F, 0, 0, func(*cpu) {}},
-	command{"", 0x40, 0, 0, func(*cpu) {}},
-	command{"", 0x41, 0, 0, func(*cpu) {}},
-	command{"", 0x42, 0, 0, func(*cpu) {}},
-	command{"", 0x43, 0, 0, func(*cpu) {}},
-	command{"", 0x44, 0, 0, func(*cpu) {}},
-	command{"", 0x45, 0, 0, func(*cpu) {}},
-	command{"", 0x46, 0, 0, func(*cpu) {}},
-	command{"LD B, A", 0x47, 0, 4, func(c *cpu) {
+	0x3F: command{"", 0, 0, func(*cpu) {}},
+	0x40: command{"LD B, B", 0, 4, func(*cpu) { panic("") }},
+	0x41: command{"LD B, C", 0, 4, func(*cpu) { panic("") }},
+	0x42: command{"LD B, D", 0, 4, func(*cpu) { panic("") }},
+	0x43: command{"LD B, E", 0, 4, func(*cpu) { panic("") }},
+	0x44: command{"LD B, H", 0, 4, func(*cpu) { panic("") }},
+	0x45: command{"LD B, L", 0, 4, func(*cpu) { panic("") }},
+	0x46: command{"LD B, (HL)", 0, 8, func(*cpu) { panic("") }},
+	0x47: command{"LD B, A", 0, 4, func(c *cpu) {
 		c.b.set(c.a.get())
 	}},
-	command{"", 0x48, 0, 0, func(*cpu) {}},
-	command{"", 0x49, 0, 0, func(*cpu) {}},
-	command{"", 0x4A, 0, 0, func(*cpu) {}},
-	command{"", 0x4B, 0, 0, func(*cpu) {}},
-	command{"", 0x4C, 0, 0, func(*cpu) {}},
-	command{"", 0x4D, 0, 0, func(*cpu) {}},
-	command{"", 0x4E, 0, 0, func(*cpu) {}},
-	command{"", 0x4F, 0, 0, func(*cpu) {}},
-	command{"", 0x50, 0, 0, func(*cpu) {}},
-	command{"", 0x51, 0, 0, func(*cpu) {}},
-	command{"", 0x52, 0, 0, func(*cpu) {}},
-	command{"", 0x53, 0, 0, func(*cpu) {}},
-	command{"", 0x54, 0, 0, func(*cpu) {}},
-	command{"", 0x55, 0, 0, func(*cpu) {}},
-	command{"", 0x56, 0, 0, func(*cpu) {}},
-	command{"", 0x57, 0, 0, func(*cpu) {}},
-	command{"", 0x58, 0, 0, func(*cpu) {}},
-	command{"", 0x59, 0, 0, func(c *cpu) {}},
-	command{"", 0x5A, 0, 0, func(c *cpu) {}},
-	command{"", 0x5B, 0, 0, func(c *cpu) {}},
-	command{"", 0x5C, 0, 0, func(c *cpu) {}},
-	command{"", 0x5D, 0, 0, func(c *cpu) {}},
-	command{"", 0x5E, 0, 0, func(c *cpu) {}},
-	command{"", 0x5F, 0, 0, func(c *cpu) {}},
-	command{"", 0x60, 0, 0, func(c *cpu) {}},
-	command{"", 0x61, 0, 0, func(c *cpu) {}},
-	command{"", 0x62, 0, 0, func(c *cpu) {}},
-	command{"", 0x63, 0, 0, func(c *cpu) {}},
-	command{"", 0x64, 0, 0, func(c *cpu) {}},
-	command{"", 0x65, 0, 0, func(c *cpu) {}},
-	command{"", 0x66, 0, 0, func(c *cpu) {}},
-	command{"", 0x67, 0, 0, func(c *cpu) {}},
-	command{"", 0x68, 0, 0, func(c *cpu) {}},
-	command{"", 0x69, 0, 0, func(c *cpu) {}},
-	command{"", 0x6A, 0, 0, func(c *cpu) {}},
-	command{"", 0x6B, 0, 0, func(c *cpu) {}},
-	command{"", 0x6C, 0, 0, func(c *cpu) {}},
-	command{"", 0x6D, 0, 0, func(c *cpu) {}},
-	command{"", 0x6E, 0, 0, func(c *cpu) {}},
-	command{"", 0x6F, 0, 0, func(c *cpu) {}},
-	command{"", 0x70, 0, 0, func(c *cpu) {}},
-	command{"", 0x71, 0, 0, func(c *cpu) {}},
-	command{"", 0x72, 0, 0, func(c *cpu) {}},
-	command{"", 0x73, 0, 0, func(c *cpu) {}},
-	command{"", 0x74, 0, 0, func(c *cpu) {}},
-	command{"", 0x75, 0, 0, func(c *cpu) {}},
-	command{"", 0x76, 0, 0, func(c *cpu) {}},
-	command{"", 0x77, 0, 0, func(c *cpu) {}},
-	command{"LD A, B", 0x78, 0, 4, func(c *cpu) {
+	0x48: command{"", 0, 0, func(c *cpu) {}},
+	0x49: command{"", 0, 0, func(c *cpu) {}},
+	0x4A: command{"", 0, 0, func(c *cpu) {}},
+	0x4B: command{"", 0, 0, func(c *cpu) {}},
+	0x4C: command{"", 0, 0, func(c *cpu) {}},
+	0x4D: command{"", 0, 0, func(c *cpu) {}},
+	0x4E: command{"", 0, 0, func(c *cpu) {}},
+	0x4F: command{"LD C, A", 0, 4, func(c *cpu) {
+		c.c.set(c.a.get())
+	}},
+	0x50: command{"", 0, 0, func(c *cpu) {}},
+	0x51: command{"", 0, 0, func(c *cpu) {}},
+	0x52: command{"", 0, 0, func(c *cpu) {}},
+	0x53: command{"", 0, 0, func(c *cpu) {}},
+	0x54: command{"", 0, 0, func(c *cpu) {}},
+	0x55: command{"", 0, 0, func(c *cpu) {}},
+	0x56: command{"", 0, 0, func(c *cpu) {}},
+	0x57: command{"", 0, 0, func(c *cpu) {}},
+	0x58: command{"", 0, 0, func(c *cpu) {}},
+	0x59: command{"", 0, 0, func(c *cpu) {}},
+	0x5A: command{"", 0, 0, func(c *cpu) {}},
+	0x5B: command{"", 0, 0, func(c *cpu) {}},
+	0x5C: command{"", 0, 0, func(c *cpu) {}},
+	0x5D: command{"", 0, 0, func(c *cpu) {}},
+	0x5E: command{"", 0, 0, func(c *cpu) {}},
+	0x5F: command{"", 0, 0, func(c *cpu) {}},
+	0x60: command{"", 0, 0, func(c *cpu) {}},
+	0x61: command{"", 0, 0, func(c *cpu) {}},
+	0x62: command{"", 0, 0, func(c *cpu) {}},
+	0x63: command{"", 0, 0, func(c *cpu) {}},
+	0x64: command{"", 0, 0, func(c *cpu) {}},
+	0x65: command{"", 0, 0, func(c *cpu) {}},
+	0x66: command{"", 0, 0, func(c *cpu) {}},
+	0x67: command{"", 0, 0, func(c *cpu) {}},
+	0x68: command{"", 0, 0, func(c *cpu) {}},
+	0x69: command{"", 0, 0, func(c *cpu) {}},
+	0x6A: command{"", 0, 0, func(c *cpu) {}},
+	0x6B: command{"", 0, 0, func(c *cpu) {}},
+	0x6C: command{"", 0, 0, func(c *cpu) {}},
+	0x6D: command{"", 0, 0, func(c *cpu) {}},
+	0x6E: command{"", 0, 0, func(c *cpu) {}},
+	0x6F: command{"", 0, 0, func(c *cpu) {}},
+	0x70: command{"", 0, 0, func(c *cpu) {}},
+	0x71: command{"", 0, 0, func(c *cpu) {}},
+	0x72: command{"", 0, 0, func(c *cpu) {}},
+	0x73: command{"LD (HL), E", 0, 8, func(c *cpu) {
+		c.mc.writeByte(address(c.h.getWord()), c.e.get())
+	}},
+	0x74: command{"", 0, 0, func(c *cpu) {}},
+	0x75: command{"", 0, 0, func(c *cpu) {}},
+	0x76: command{"", 0, 0, func(c *cpu) {}},
+	0x77: command{"LD (HL), A", 0, 8, func(c *cpu) {
+		c.mc.writeByte(address(c.h.getWord()), c.a.get())
+	}},
+	0x78: command{"LD A, B", 0, 4, func(c *cpu) {
 		c.a.set(c.b.get())
 	}},
-	command{"LD A, C", 0x79, 0, 4, func(c *cpu) {
+	0x79: command{"LD A, C", 0, 4, func(c *cpu) {
 		c.a.set(c.c.get())
 	}},
-	command{"LD A, D", 0x7A, 0, 4, func(c *cpu) {
+	0x7A: command{"LD A, D", 0, 4, func(c *cpu) {
 		c.a.set(c.d.get())
 	}},
-	command{"LD A, E", 0x7B, 0, 4, func(c *cpu) {
+	0x7B: command{"LD A, E", 0, 4, func(c *cpu) {
 		c.a.set(c.e.get())
 	}},
-	command{"LD A, H", 0x7C, 0, 4, func(c *cpu) {
+	0x7C: command{"LD A, H", 0, 4, func(c *cpu) {
 		c.a.set(c.h.get())
 	}},
-	command{"LD A, L", 0x7D, 0, 4, func(c *cpu) {
+	0x7D: command{"LD A, L", 0, 4, func(c *cpu) {
 		c.a.set(c.l.get())
 	}},
-	command{"LD A, (HL)", 0x7E, 0, 4, func(c *cpu) { ///XXX
+	0x7E: command{"LD A, (HL)", 0, 8, func(c *cpu) {
 		c.a.set(c.mc.readByte(address(c.h.getWord())))
 	}},
-	command{"LD A, A", 0x7F, 0, 4, func(c *cpu) {
+	0x7F: command{"LD A, A", 0, 4, func(c *cpu) {
 		c.a.set(c.a.get())
 	}},
-	command{"", 0x80, 0, 0, func(*cpu) {}},
-	command{"", 0x81, 0, 0, func(*cpu) {}},
-	command{"", 0x82, 0, 0, func(*cpu) {}},
-	command{"", 0x83, 0, 0, func(*cpu) {}},
-	command{"", 0x84, 0, 0, func(*cpu) {}},
-	command{"ADD A, L", 0x85, 0, 4, func(c *cpu) {
+	0x80: command{"ADD A, B", 0, 4, func(c *cpu) {
+		c.a.set(c.add(c.a.get(), c.b.get()))
+	}},
+	0x81: command{"ADD A, C", 0, 4, func(c *cpu) {
+		c.a.set(c.add(c.a.get(), c.c.get()))
+	}},
+	0x82: command{"ADD A, D", 0, 4, func(c *cpu) {
+		c.a.set(c.add(c.a.get(), c.d.get()))
+	}},
+	0x83: command{"ADD A, E", 0, 4, func(c *cpu) {
+		c.a.set(c.add(c.a.get(), c.e.get()))
+	}},
+	0x84: command{"ADD A, H", 0, 4, func(c *cpu) {
+		c.a.set(c.add(c.a.get(), c.h.get()))
+	}},
+	0x85: command{"ADD A, L", 0, 4, func(c *cpu) {
 		c.a.set(c.add(c.a.get(), c.l.get()))
 	}},
-	command{"", 0x86, 0, 0, func(*cpu) {}},
-	command{"", 0x87, 0, 0, func(*cpu) {}},
-	command{"", 0x88, 0, 0, func(*cpu) {}},
-	command{"", 0x89, 0, 0, func(*cpu) {}},
-	command{"", 0x8A, 0, 0, func(*cpu) {}},
-	command{"", 0x8B, 0, 0, func(*cpu) {}},
-	command{"", 0x8C, 0, 0, func(*cpu) {}},
-	command{"", 0x8D, 0, 0, func(*cpu) {}},
-	command{"", 0x8E, 0, 0, func(*cpu) {}},
-	command{"", 0x8F, 0, 0, func(*cpu) {}},
-	command{"", 0x90, 0, 0, func(*cpu) {}},
-	command{"", 0x91, 0, 0, func(*cpu) {}},
-	command{"", 0x92, 0, 0, func(*cpu) {}},
-	command{"", 0x93, 0, 0, func(c *cpu) {}},
-	command{"", 0x94, 0, 0, func(c *cpu) {}},
-	command{"", 0x95, 0, 0, func(c *cpu) {}},
-	command{"", 0x96, 0, 0, func(c *cpu) {}},
-	command{"", 0x97, 0, 0, func(c *cpu) {}},
-	command{"", 0x98, 0, 0, func(c *cpu) {}},
-	command{"", 0x99, 0, 0, func(c *cpu) {}},
-	command{"", 0x9A, 0, 0, func(c *cpu) {}},
-	command{"", 0x9B, 0, 0, func(c *cpu) {}},
-	command{"", 0x9C, 0, 0, func(c *cpu) {}},
-	command{"", 0x9D, 0, 0, func(c *cpu) {}},
-	command{"", 0x9E, 0, 0, func(c *cpu) {}},
-	command{"", 0x9F, 0, 0, func(c *cpu) {}},
-	command{"", 0xA0, 0, 0, func(c *cpu) {}},
-	command{"", 0xA1, 0, 0, func(c *cpu) {}},
-	command{"", 0xA2, 0, 0, func(c *cpu) {}},
-	command{"", 0xA3, 0, 0, func(c *cpu) {}},
-	command{"AND H", 0xA4, 0, 4, func(c *cpu) {
+	0x86: command{"ADD A, (HL)", 0, 8, func(c *cpu) {
+		c.a.set(c.add(c.a.get(), c.mc.readByte(address(c.h.getWord()))))
+	}},
+	0x87: command{"ADD A, A", 0, 4, func(c *cpu) {
+		c.a.set(c.add(c.a.get(), c.a.get()))
+	}},
+	0x88: command{"ADC A, B", 0, 4, func(c *cpu) {
+		c.a.set(c.adc(c.a.get(), c.b.get()))
+	}},
+	0x89: command{"ADC A, C", 0, 4, func(c *cpu) {
+		c.a.set(c.adc(c.a.get(), c.c.get()))
+	}}, 0x8A: command{"ADC A, D", 0, 4, func(c *cpu) {
+		c.a.set(c.adc(c.a.get(), c.d.get()))
+	}}, 0x8B: command{"ADC A, E", 0, 4, func(c *cpu) {
+		c.a.set(c.adc(c.a.get(), c.e.get()))
+	}}, 0x8C: command{"ADC A, H", 0, 4, func(c *cpu) {
+		c.a.set(c.adc(c.a.get(), c.h.get()))
+	}}, 0x8D: command{"ADC A, L", 0, 4, func(c *cpu) {
+		c.a.set(c.adc(c.a.get(), c.l.get()))
+	}}, 0x8E: command{"ADC A, (HL)", 0, 8, func(c *cpu) {
+		c.a.set(c.adc(c.a.get(), c.mc.readByte(address(c.h.getWord()))))
+	}}, 0x8F: command{"ADC A, A", 0, 4, func(c *cpu) {
+		c.a.set(c.adc(c.a.get(), c.a.get()))
+	}},
+	0x90: command{"", 0, 0, func(c *cpu) {}},
+	0x91: command{"", 0, 0, func(c *cpu) {}},
+	0x92: command{"", 0, 0, func(c *cpu) {}},
+	0x93: command{"", 0, 0, func(c *cpu) {}},
+	0x94: command{"", 0, 0, func(c *cpu) {}},
+	0x95: command{"", 0, 0, func(c *cpu) {}},
+	0x96: command{"", 0, 0, func(c *cpu) {}},
+	0x97: command{"", 0, 0, func(c *cpu) {}},
+	0x98: command{"", 0, 0, func(c *cpu) {}},
+	0x99: command{"", 0, 0, func(c *cpu) {}},
+	0x9A: command{"", 0, 0, func(c *cpu) {}},
+	0x9B: command{"", 0, 0, func(c *cpu) {}},
+	0x9C: command{"", 0, 0, func(c *cpu) {}},
+	0x9D: command{"", 0, 0, func(c *cpu) {}},
+	0x9E: command{"", 0, 0, func(c *cpu) {}},
+	0x9F: command{"", 0, 0, func(c *cpu) {}},
+	0xA0: command{"", 0, 0, func(c *cpu) {}},
+	0xA1: command{"", 0, 0, func(c *cpu) {}},
+	0xA2: command{"", 0, 0, func(c *cpu) {}},
+	0xA3: command{"", 0, 0, func(c *cpu) {}},
+	0xA4: command{"AND H", 0, 4, func(c *cpu) {
 		c.a.set(c.and(c.a.get(), c.h.get()))
 	}},
-	command{"", 0xA5, 0, 0, func(c *cpu) {}},
-	command{"", 0xA6, 0, 0, func(c *cpu) {}},
-	command{"", 0xA7, 0, 0, func(c *cpu) {}},
-	command{"", 0xA8, 0, 0, func(c *cpu) {}},
-	command{"", 0xA9, 0, 0, func(c *cpu) {}},
-	command{"", 0xAA, 0, 0, func(c *cpu) {}},
-	command{"", 0xAB, 0, 0, func(c *cpu) {}},
-	command{"", 0xAC, 0, 0, func(c *cpu) {}},
-	command{"", 0xAD, 0, 0, func(c *cpu) {}},
-	command{"", 0xAE, 0, 0, func(c *cpu) {}},
-	command{"XOR A", 0xAF, 0, 4, func(c *cpu) {
+	0xA5: command{"", 0, 0, func(c *cpu) {}},
+	0xA6: command{"", 0, 0, func(c *cpu) {}},
+	0xA7: command{"", 0, 0, func(c *cpu) {}},
+	0xA8: command{"", 0, 0, func(c *cpu) {}},
+	0xA9: command{"", 0, 0, func(c *cpu) {}},
+	0xAA: command{"", 0, 0, func(c *cpu) {}},
+	0xAB: command{"", 0, 0, func(c *cpu) {}},
+	0xAC: command{"", 0, 0, func(c *cpu) {}},
+	0xAD: command{"", 0, 0, func(c *cpu) {}},
+	0xAE: command{"", 0, 0, func(c *cpu) {}},
+	0xAF: command{"XOR A", 0, 4, func(c *cpu) {
 		c.a.set(c.xor(c.a.get(), c.a.get()))
 	}},
-	command{"OR B", 0xB0, 0, 4, func(c *cpu) {
+	0xB0: command{"OR B", 0, 4, func(c *cpu) {
 		c.a.set(c.or(c.a.get(), c.b.get()))
 	}},
-	command{"OR C", 0xB1, 0, 4, func(c *cpu) {
+	0xB1: command{"OR C", 0, 4, func(c *cpu) {
 		c.a.set(c.or(c.a.get(), c.c.get()))
 	}},
-	command{"OR D", 0xB2, 0, 4, func(c *cpu) {
+	0xB2: command{"OR D", 0, 4, func(c *cpu) {
 		c.a.set(c.or(c.a.get(), c.d.get()))
 	}},
-	command{"OR E", 0xB3, 0, 4, func(c *cpu) {
+	0xB3: command{"OR E", 0, 4, func(c *cpu) {
 		c.a.set(c.or(c.a.get(), c.e.get()))
 	}},
-	command{"OR H", 0xB4, 0, 4, func(c *cpu) {
+	0xB4: command{"OR H", 0, 4, func(c *cpu) {
 		c.a.set(c.or(c.a.get(), c.h.get()))
 	}},
-	command{"OR L", 0xB5, 0, 4, func(c *cpu) {
+	0xB5: command{"OR L", 0, 4, func(c *cpu) {
 		c.a.set(c.or(c.a.get(), c.l.get()))
 	}},
-	command{"OR (HL)", 0xB6, 0, 8, func(c *cpu) {
+	0xB6: command{"OR (HL)", 0, 8, func(c *cpu) {
 		c.a.set(c.or(c.a.get(), c.mc.readByte(address(c.h.getWord()))))
 	}},
-	command{"", 0xB7, 0, 0, func(c *cpu) {}},
-	command{"", 0xB8, 0, 0, func(c *cpu) {}},
-	command{"", 0xB9, 0, 0, func(c *cpu) {}},
-	command{"", 0xBA, 0, 0, func(c *cpu) {}},
-	command{"", 0xBB, 0, 0, func(c *cpu) {}},
-	command{"", 0xBC, 0, 0, func(c *cpu) {}},
-	command{"", 0xBD, 0, 0, func(c *cpu) {}},
-	command{"", 0xBE, 0, 0, func(c *cpu) {}},
-	command{"", 0xBF, 0, 0, func(c *cpu) {}},
-	command{"", 0xC0, 0, 0, func(c *cpu) {}},
-	command{"", 0xC1, 0, 0, func(c *cpu) {}},
-	command{"", 0xC2, 0, 0, func(c *cpu) {}},
-	command{"JP nn", 0xC3, 2, 12, func(c *cpu) {
-		c.jp(bytesToAddress(c.inst[2], c.inst[1]))
+	0xB7: command{"", 0, 0, func(c *cpu) {}},
+	0xB8: command{"", 0, 0, func(c *cpu) {}},
+	0xB9: command{"", 0, 0, func(c *cpu) {}},
+	0xBA: command{"", 0, 0, func(c *cpu) {}},
+	0xBB: command{"", 0, 0, func(c *cpu) {}},
+	0xBC: command{"", 0, 0, func(c *cpu) {}},
+	0xBD: command{"", 0, 0, func(c *cpu) {}},
+	0xBE: command{"", 0, 0, func(c *cpu) {}},
+	0xBF: command{"", 0, 0, func(c *cpu) {}},
+	0xC0: command{"", 0, 0, func(c *cpu) {}},
+	0xC1: command{"POP BC", 0, 12, func(c *cpu) {
+		c.b.setWord(c.popWord())
 	}},
-	command{"", 0xC4, 0, 0, func(c *cpu) {}},
-	command{"", 0xC5, 0, 0, func(c *cpu) {}},
-	command{"", 0xC6, 0, 0, func(c *cpu) {}},
-	command{"", 0xC7, 0, 0, func(c *cpu) {}},
-	command{"", 0xC8, 0, 0, func(c *cpu) {}},
-	command{"RET", 0xC9, 0, 8, func(c *cpu) {
+	0xC2: command{"", 0, 0, func(c *cpu) {}},
+	0xC3: command{"JP nn", 2, 12, func(c *cpu) {
+		c.jp(bytesToAddress(c.inst.p[1], c.inst.p[0]))
+	}},
+	0xC4: command{"", 0, 0, func(c *cpu) {}},
+	0xC5: command{"PUSH BC", 0, 16, func(c *cpu) {
+		c.pushWord(c.b.getWord())
+	}},
+	0xC6: command{"", 0, 0, func(c *cpu) {}},
+	0xC7: command{"", 0, 0, func(c *cpu) {}},
+	0xC8: command{"", 0, 0, func(c *cpu) {}},
+	0xC9: command{"RET", 0, 8, func(c *cpu) {
 		c.jp(address(c.popWord()))
 	}},
-	command{"", 0xCA, 0, 0, func(c *cpu) {}},
-	command{"", 0xCB, 0, 0, func(c *cpu) {}},
-	command{"", 0xCC, 0, 0, func(c *cpu) {}},
-	command{"CALL nn", 0xCD, 2, 12, func(c *cpu) {
-		c.call(bytesToAddress(c.inst[2], c.inst[1]))
+	0xCA: command{"", 0, 0, func(c *cpu) {}},
+	0xCB11: command{"RL C", 0, 8, func(c *cpu) {
+		c.c.set(c.rl(c.c.get()))
 	}},
-	command{"", 0xCE, 0, 0, func(c *cpu) {}},
-	command{"", 0xCF, 0, 0, func(c *cpu) {}},
-	command{"", 0xD0, 0, 0, func(c *cpu) {}},
-	command{"", 0xD1, 0, 0, func(c *cpu) {}},
-	command{"", 0xD2, 0, 0, func(c *cpu) {}},
-	command{"", 0xD3, 0, 0, func(c *cpu) {}},
-	command{"", 0xD4, 0, 0, func(c *cpu) {}},
-	command{"", 0xD5, 0, 0, func(c *cpu) {}},
-	command{"", 0xD6, 0, 0, func(c *cpu) {}},
-	command{"", 0xD7, 0, 0, func(c *cpu) {}},
-	command{"", 0xD8, 0, 0, func(c *cpu) {}},
-	command{"", 0xD9, 0, 0, func(c *cpu) {}},
-	command{"", 0xDA, 0, 0, func(c *cpu) {}},
-	command{"", 0xDB, 0, 0, func(c *cpu) {}},
-	command{"", 0xDC, 0, 0, func(c *cpu) {}},
-	command{"", 0xDD, 0, 0, func(c *cpu) {}},
-	command{"", 0xDE, 0, 0, func(c *cpu) {}},
-	command{"", 0xDF, 0, 0, func(c *cpu) {}},
-	command{"LDH (n), A", 0xE0, 1, 12, func(c *cpu) {
-		c.mc.writeByte(address(0xFF00+uint16(c.inst[1])), c.a.get())
+	0xCB7C: command{"BIT 7, H", 0, 8, func(c *cpu) {
+		c.bit(7, c.h.get())
 	}},
-	command{"", 0xE1, 0, 0, func(*cpu) {}},
-	command{"LD (C), A", 0xE2, 0, 8, func(c *cpu) {
+	0xCC: command{"CALL Z, nn", 2, 12, func(c *cpu) {
+		c.callF(flagZ, bytesToAddress(c.inst.p[1], c.inst.p[0]))
+	}},
+	0xCD: command{"CALL nn", 2, 12, func(c *cpu) {
+		c.call(bytesToAddress(c.inst.p[1], c.inst.p[0]))
+	}},
+	0xCE: command{"", 0, 0, func(c *cpu) {}},
+	0xCF: command{"", 0, 0, func(c *cpu) {}},
+	0xD0: command{"", 0, 0, func(c *cpu) {}},
+	0xD1: command{"", 0, 0, func(c *cpu) {}},
+	0xD2: command{"", 0, 0, func(c *cpu) {}},
+	0xD3: command{"", 0, 0, func(c *cpu) {}},
+	0xD4: command{"", 0, 0, func(c *cpu) {}},
+	0xD5: command{"", 0, 0, func(c *cpu) {}},
+	0xD6: command{"", 0, 0, func(c *cpu) {}},
+	0xD7: command{"", 0, 0, func(c *cpu) {}},
+	0xD8: command{"", 0, 0, func(c *cpu) {}},
+	0xD9: command{"", 0, 0, func(c *cpu) {}},
+	0xDA: command{"", 0, 0, func(c *cpu) {}},
+	0xDB: command{"", 0, 0, func(c *cpu) {}},
+	0xDC: command{"", 0, 0, func(c *cpu) {}},
+	0xDE: command{"", 0, 0, func(c *cpu) {}},
+	0xDF: command{"", 0, 0, func(c *cpu) {}},
+	0xE0: command{"LDH (n), A", 1, 12, func(c *cpu) {
+		c.mc.writeByte(address(0xFF00+uint16(c.inst.p[0])), c.a.get())
+	}},
+	0xE1: command{"", 0, 0, func(*cpu) {}},
+	0xE2: command{"LD (C), A", 0, 8, func(c *cpu) {
 		c.mc.writeByte(address(0xFF00+uint16(c.c.get())), c.a.get())
 	}},
+} /*
 	command{"", 0xE3, 0, 0, func(c *cpu) {}},
 	command{"", 0xE4, 0, 0, func(c *cpu) {}},
 	command{"", 0xE5, 0, 0, func(c *cpu) {}},
@@ -402,28 +464,23 @@ var commandTable = []command{
 	}},
 	command{"", 0xFF, 0, 0, func(*cpu) {}},
 }
-
+*/
 // holds the instruction currently being fetched
-type instruction []uint8
+type instruction struct {
+	o opcode
+	p []uint8 // params
+}
 
-func newInstruction(d ...uint8) instruction {
-	inst := make([]uint8, len(d))
-	copy(inst, d)
-	return inst
+func newInstruction(o opcode, ps ...uint8) instruction {
+	p := make([]uint8, len(ps))
+	copy(p, ps)
+	return instruction{o, p}
 }
 
 func (i instruction) String() string {
-	if len(i) == 1 {
-		opcode := i[0]
-		return fmt.Sprintf("< %s [ 0x%02X ] >", commandTable[opcode], i[0])
+	ps := ""
+	for _, v := range i.p {
+		ps += fmt.Sprintf("0x%02X ", v)
 	}
-	if len(i) == 2 {
-		opcode := i[0]
-		return fmt.Sprintf("< %s [ 0x%02X 0x%02X ] >", commandTable[opcode], i[0], i[1])
-	}
-	if len(i) == 3 {
-		opcode := i[0]
-		return fmt.Sprintf("< %s [ 0x%02X 0x%02X 0x%02X ] >", commandTable[opcode], i[0], i[1], i[2])
-	}
-	return "< >"
+	return fmt.Sprintf("%s [ 0x%02X %s]", i.o, uint16(i.o), ps)
 }
