@@ -1,6 +1,8 @@
 package main
 
-import ()
+import (
+	"fmt"
+)
 
 type mmu struct {
 	bios memoryDevice // unloadable, maps to first 0xFF bytes when loaded
@@ -121,15 +123,27 @@ func (mc mmu) selectMemoryDevice(addr addressInterface) (memoryDevice, address) 
 		return mc.wram, address(a - 0xE000)
 	} else if 0xFE00 <= a && a < 0xFEA0 {
 		return mc.oam, address(a - 0xFE00)
-//	} else if 0xFF00 <= a && a < 0xFF40 {
-//		return mc.io, address(a - 0xFF00)
+		//} else if 0xFF00 <= a && a < 0xFF40 {
+		//	return mc.io, address(a - 0xFF00)
+	} else if 0xFF00 == a { // keypad
+		panic("keypad unimplemented")
+	} else if 0xFF01 <= a && a < 0xFF03 { // serial
+		return mc.io, address(a - 0xFF00)
+	} else if 0xFF04 == a { // DIV
+		panic("div register unimplemented")
+	} else if 0xFF0F == a { // IF
+		return mc.io, address(a - 0xFF00)
+	} else if 0xFF11 <= a && a < 0xFF15 { // NR11-14
+		return mc.io, address(a - 0xFF00)
+	} else if 0xFF24 <= a && a < 0xFF27 { // NR50-52
+		return mc.io, address(a - 0xFF00)
 	} else if 0xFF40 <= a && a < 0xFF49 {
 		return mc.vidIo, address(a - 0xFF40)
 	} else if 0xFF80 <= a && a <= 0xFFFF {
 		return mc.zero, address(a - 0xFF80)
 	}
 	//return nilModule{}, address(0)
-	panic("unhandled memory access")
+	panic(fmt.Sprintf("unhandled memory access: 0x%04X", addr))
 }
 
 func (mc mmu) readByte(addr addressInterface) uint8 {
@@ -144,6 +158,9 @@ func (mc mmu) readWord(addr address) uint16 {
 }
 
 func (mc mmu) writeByte(addr addressInterface, b uint8) {
+	if addr.Uint16() == 0xFF0F {
+		fmt.Println("0xFF0F <-", b)
+	}
 	dev, a := mc.selectMemoryDevice(addr)
 	dev.writeByte(a, b)
 }

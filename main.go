@@ -41,12 +41,12 @@ func main() {
 	for { //i := 0; i < 5; i++ {
 		t := c.step()
 		v.step(t)
-		fmt.Printf("0x%02X\n", m.readByte(address(0xFF44)))
+		//fmt.Printf("0x%02X\n", m.readByte(address(0xFF44)))
 		if commandTable[c.inst.o].t == 0 {
 			fmt.Println(c)
 			panic("unknown opcode")
 		} else {
-			fmt.Println(c)
+			//fmt.Println(c)
 		}
 	}
 }

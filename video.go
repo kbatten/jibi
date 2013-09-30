@@ -13,7 +13,7 @@ type video struct {
 	ram memoryDevice
 	// 0x00-0xA0
 	oam memoryDevice
-	io memoryDevice
+	io  memoryDevice
 
 	frameBuff []uint8 // uint2 256x256
 
@@ -49,7 +49,7 @@ func (v video) drawLine() {
 	curline := v.io.readByte(address(4))
 	line := ""
 	yInd := (uint16(scrollY) + uint16(curline)) * uint16(256)
-	for x := uint8(0); x < v.width; x++ {
+	for x := uint8(0); x < /*v.width*/ 115; x++ {
 		c := v.frameBuff[uint16(x)+uint16(scrollX)+yInd]
 		// half height pixes don't use grayscale
 		o := " "
@@ -115,44 +115,60 @@ func (v video) paintTile(tileData []uint8, x, y uint8) {
 	}
 }
 
-func (v video) paint() {
-	//tileData = []uint8{
-	//	0x7C, 0x7C, 0x00, 0xC6, 0xC6, 0x00, 0x00, 0xFE,
-	//	0xC6, 0xC6, 0x00, 0xC6, 0xC6, 0x00, 0x00, 0x00,
-	//}
-	//v.paintTile(tileData, 16, 16)
-
+func (v video) paintBackground(tilemap, tileset uint8) {
 	// background
 	// tile map 0 0x1800-0x1BFF
 	// tile set 1 0x0000
+	mapaddr := uint16(0x1800)
+	if tilemap == 1 {
+		mapaddr = 0x1C00
+	}
+	setaddr := uint16(0x1000)
+	if tileset == 1 {
+		setaddr = 0x0000
+	}
 
-	// tile map 1 0x1C00
-	//x = 0
-	//y = 0
-	//for i := 0x0000; i < 0x0400; i += 16 {
-	//	tileInd := v.ram.readByte(address(0x1800 + i))
-	//	ind := uint16(tileInd) * 16
-	//	for j := uint16(0); j < 16; j++ {
-	//		tileData[j] = v.ram.readByte(address(ind + j))
-	//	}
-	//	v.paintTile(tileData, x, y)
-	//	x += 8
-	//	if x >= v.width {
-	//		x = 0
-	//		y += 8
-	//	}
-	//}
-	/*
-		lcdCtrl := v.io.readByte(address(0))
-		ctrlBackground := lcdCtrl&0x01 == 0x01
-		ctrlSprites := lcdCtrl&0x02 == 0x02
-		ctrlSpriteSize := lcdCtrl&0x04 == 0x04
-		ctrlBgTileMap := lcdCtrl&0x08 == 0x08
-		ctrlBgTileSet := lcdCtrl&0x10 == 0x10
-		ctrlWindow := lcdCtrl&0x20 == 0x20
-		ctrlWindowTileMap := lcdCtrl&0x40 == 0x40
-		ctrlDisplay := lcdCtrl&0x80 == 0x80
-	*/
+	x := uint8(0)
+	y := uint8(0)
+	tileData := make([]uint8, 16)
+	for i := uint16(0x0000); i < 0x0400; i += 16 {
+		tileInd := v.ram.readByte(address(mapaddr + i))
+		ind := setaddr + uint16(tileInd)*16
+		for j := uint16(0); j < 16; j++ {
+			tileData[j] = v.ram.readByte(address(ind + j))
+		}
+		v.paintTile(tileData, x, y)
+		x += 8
+		if x >= v.width {
+			x = 0
+			y += 8
+		}
+	}
+
+}
+
+func (v video) paint() {
+	lcdCtrl := v.io.readByte(address(0))
+	ctrlBackground := lcdCtrl&0x01 == 0x01
+	ctrlSprites := lcdCtrl&0x02 == 0x02
+	ctrlSpriteSize := lcdCtrl&0x04 == 0x04
+	ctrlBgTileMap := lcdCtrl & 0x08 >> 3
+	ctrlBgTileSet := lcdCtrl & 0x10 >> 4
+	ctrlWindow := lcdCtrl&0x20 == 0x20
+	ctrlWindowTileMap := lcdCtrl & 0x40 >> 6
+	ctrlDisplay := lcdCtrl&0x80 == 0x80
+	fmt.Println(ctrlBackground,
+		ctrlSprites,
+		ctrlSpriteSize,
+		ctrlBgTileMap,
+		ctrlBgTileSet,
+		ctrlWindow,
+		ctrlWindowTileMap,
+		ctrlDisplay)
+	if ctrlBackground {
+		v.paintBackground(ctrlBgTileMap, ctrlBgTileSet)
+	}
+
 	// update frameBuffer to handle two verticle pixels per line
 	// doesn't work for odd values of scrollY
 	// only b&w, not grayscale
@@ -175,7 +191,7 @@ func (v video) blank() {
 
 func (v video) step(t uint8) {
 	lcdCtrl := v.io.readByte(address(0))
-	if lcdCtrl & 0x80 != 0x80 {
+	if lcdCtrl&0x80 != 0x80 {
 		// lcd off
 		return
 	}
@@ -224,4 +240,3 @@ func (v video) step(t uint8) {
 func (v video) String() string {
 	return fmt.Sprintf("<video>")
 }
-
