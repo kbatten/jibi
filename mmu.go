@@ -11,10 +11,11 @@ type mmu struct {
 	eram memoryDevice // A000-BFFF 8k
 	wram memoryDevice // C000-DFFF 8k
 	// echo ram F000-FDFF
-	oam   memoryDevice // FE00-FE9F
-	io    memoryDevice // FF00-FF40
-	vidIo memoryDevice // FF40-FF49
-	zero  memoryDevice // FF80-FFFF
+	oam    memoryDevice // FE00-FE9F
+	io     memoryDevice // FF00-FF40
+	iflags memoryDevice // FF0F
+	vidIo  memoryDevice // FF40-FF49
+	zero   memoryDevice // FF80-FFFF
 
 	outBios *bool
 }
@@ -74,7 +75,7 @@ func (n nilModule) readByte(addr addressInterface) uint8 {
 func (r nilModule) writeByte(addressInterface, uint8) {
 }
 
-func newMmu(bios memoryDevice, cart cartridge, vid video) mmu {
+func newMmu(bios memoryDevice, cart cartridge, vid video, iflags memoryDevice) mmu {
 	mc := mmu{
 		bios:    bios,
 		rom:     cart,
@@ -83,6 +84,7 @@ func newMmu(bios memoryDevice, cart cartridge, vid video) mmu {
 		wram:    newRamModule(0x2000, nil),
 		oam:     vid.oam,
 		io:      newRamModule(0x4D, nil),
+		iflags:  iflags,
 		vidIo:   vid.io,
 		zero:    newRamModule(0x80, nil),
 		outBios: new(bool)}
@@ -132,7 +134,7 @@ func (mc mmu) selectMemoryDevice(addr addressInterface) (memoryDevice, address) 
 	} else if 0xFF04 == a { // DIV
 		panic("div register unimplemented")
 	} else if 0xFF0F == a { // IF
-		return mc.io, address(a - 0xFF00)
+		return mc.iflags, address(0)
 	} else if 0xFF11 <= a && a < 0xFF15 { // NR11-14
 		return mc.io, address(a - 0xFF00)
 	} else if 0xFF24 <= a && a < 0xFF27 { // NR50-52

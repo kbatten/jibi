@@ -515,8 +515,7 @@ var commandTable = map[opcode]command{
 		c.a.set(c.mc.readByte(address(0xFF00 + uint16(c.c.get()))))
 	}},
 	0xF3: command{"DI", 0, 4, func(c *cpu) {
-		// TODO: implement
-		c.ie = false
+		c.ime = false
 	}},
 	0xF4: command{"", 0, 0, func(c *cpu) {}},
 	0xF5: command{"", 0, 0, func(c *cpu) {}},

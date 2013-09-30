@@ -15,6 +15,8 @@ type video struct {
 	oam memoryDevice
 	io  memoryDevice
 
+	iflags interruptFlags // interrupt flags
+
 	frameBuff []uint8 // uint2 256x256
 
 	mode *uint8
@@ -24,7 +26,7 @@ type video struct {
 	winY uint8
 }
 
-func newVideo(winX, winY uint8) video {
+func newVideo(iflags interruptFlags, winX, winY uint8) video {
 	if winX > 160 {
 		winX = 160
 	}
@@ -33,8 +35,8 @@ func newVideo(winX, winY uint8) video {
 	}
 	oam := newRamModule(0xA0, nil)
 	io := newRamModule(0x9, nil)
-	return video{newRamModule(0x2000, nil), oam, io, make([]uint8, 65536),
-		new(uint8), new(uint32), winX, winY}
+	return video{newRamModule(0x2000, nil), oam, io, iflags,
+		make([]uint8, 65536), new(uint8), new(uint32), winX, winY}
 }
 
 func (v video) readByte(addr addressInterface) uint8 {
@@ -221,6 +223,7 @@ func (v video) step(t uint8) {
 			v.io.writeByte(address(4), curline)
 			if curline == 144 {
 				*v.mode = 1 // end of last line
+				v.iflags.set(interruptVBlank)
 			} else {
 				*v.mode = 2 // end of line
 			}
