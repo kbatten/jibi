@@ -27,6 +27,9 @@ type cpu struct {
 	// current instruction buffer
 	inst instruction
 
+	// interrupts
+	ie bool
+
 	mc mmu // read/write bytes and words
 }
 

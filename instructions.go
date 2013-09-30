@@ -454,10 +454,8 @@ var commandTable = map[opcode]command{
 	0xF1: command{"", 0, 0, func(c *cpu) {}},
 	0xF2: command{"", 0, 0, func(c *cpu) {}},
 	0xF3: command{"DI", 0, 4, func(c *cpu) {
-		// write to Interrupt Enable Register
-		// TODO
-		panic("")
-		c.mc.writeByte(address(0xFFFF), 0x03)
+		c.ie = false
+		panic("disable interrupts")
 	}},
 	0xF4: command{"", 0, 0, func(c *cpu) {}},
 	0xF5: command{"", 0, 0, func(c *cpu) {}},

@@ -13,6 +13,7 @@ type video struct {
 	ram memoryDevice
 	// 0x00-0xA0
 	oam memoryDevice
+	io memoryDevice
 
 	frameBuff []uint8 // uint2 256x256
 
@@ -25,9 +26,10 @@ type video struct {
 
 func newVideo() video {
 	oam := newRamModule(0xA0, nil)
+	io := newRamModule(0x9, nil)
 	width := uint8(160)
 	height := uint8(144)
-	return video{newRamModule(0x2000, nil), oam, make([]uint8, 65536),
+	return video{newRamModule(0x2000, nil), oam, io, make([]uint8, 65536),
 		new(uint8), new(uint32), width, height}
 }
 
@@ -41,10 +43,10 @@ func (v video) writeByte(addr addressInterface, n uint8) {
 
 // TODO: don't use framebuffer, dynamically build the line at drawtime
 func (v video) drawLine() {
-	scrollX := v.oam.readByte(address(0x02))
-	scrollY := v.oam.readByte(address(0x03))
+	scrollX := v.io.readByte(address(0x02))
+	scrollY := v.io.readByte(address(0x03))
 
-	curline := v.oam.readByte(address(4))
+	curline := v.io.readByte(address(4))
 	line := ""
 	yInd := (uint16(scrollY) + uint16(curline)) * uint16(256)
 	for x := uint8(0); x < v.width; x++ {
@@ -140,17 +142,17 @@ func (v video) paint() {
 	//		y += 8
 	//	}
 	//}
-/*
-	lcdCtrl := v.oam.readByte(address(0))
-	ctrlBackground := lcdCtrl&0x01 == 0x01
-	ctrlSprites := lcdCtrl&0x02 == 0x02
-	ctrlSpriteSize := lcdCtrl&0x04 == 0x04
-	ctrlBgTileMap := lcdCtrl&0x08 == 0x08
-	ctrlBgTileSet := lcdCtrl&0x10 == 0x10
-	ctrlWindow := lcdCtrl&0x20 == 0x20
-	ctrlWindowTileMap := lcdCtrl&0x40 == 0x40
-	ctrlDisplay := lcdCtrl&0x80 == 0x80
-*/
+	/*
+		lcdCtrl := v.io.readByte(address(0))
+		ctrlBackground := lcdCtrl&0x01 == 0x01
+		ctrlSprites := lcdCtrl&0x02 == 0x02
+		ctrlSpriteSize := lcdCtrl&0x04 == 0x04
+		ctrlBgTileMap := lcdCtrl&0x08 == 0x08
+		ctrlBgTileSet := lcdCtrl&0x10 == 0x10
+		ctrlWindow := lcdCtrl&0x20 == 0x20
+		ctrlWindowTileMap := lcdCtrl&0x40 == 0x40
+		ctrlDisplay := lcdCtrl&0x80 == 0x80
+	*/
 	// update frameBuffer to handle two verticle pixels per line
 	// doesn't work for odd values of scrollY
 	// only b&w, not grayscale
@@ -172,10 +174,10 @@ func (v video) blank() {
 }
 
 func (v video) step(t uint8) {
-	lcdCtrl := v.oam.readByte(address(0))
+	lcdCtrl := v.io.readByte(address(0))
 	// turn on lcd
-	lcdCtrl |=0x80
-	v.oam.writeByte(address(0), lcdCtrl)
+	lcdCtrl |= 0x80
+	v.io.writeByte(address(0), lcdCtrl)
 
 	*v.t += uint32(t)
 	switch *v.mode {
@@ -195,8 +197,8 @@ func (v video) step(t uint8) {
 	case 0: // hblank
 		if *v.t >= 204 {
 			*v.t -= 204
-			curline := v.oam.readByte(address(4)) + 1
-			v.oam.writeByte(address(4), curline)
+			curline := v.io.readByte(address(4)) + 1
+			v.io.writeByte(address(4), curline)
 			if curline == v.height {
 				*v.mode = 1 // end of last line
 			} else {
@@ -206,12 +208,12 @@ func (v video) step(t uint8) {
 	case 1: // vblank 10 lines
 		if *v.t >= 456 {
 			*v.t -= 456
-			curline := v.oam.readByte(address(4)) - 10
-			v.oam.writeByte(address(4), curline)
+			curline := v.io.readByte(address(4)) - 10
+			v.io.writeByte(address(4), curline)
 			if curline >= v.height { //underflow
 				v.blank()
 				v.paint()
-				v.oam.writeByte(address(4), 0)
+				v.io.writeByte(address(4), 0)
 				*v.mode = 2
 			}
 		}
@@ -221,3 +223,4 @@ func (v video) step(t uint8) {
 func (v video) String() string {
 	return fmt.Sprintf("<video>")
 }
+
