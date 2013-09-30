@@ -158,9 +158,6 @@ func (mc mmu) readWord(addr address) uint16 {
 }
 
 func (mc mmu) writeByte(addr addressInterface, b uint8) {
-	if addr.Uint16() == 0xFF0F {
-		fmt.Println("0xFF0F <-", b)
-	}
 	dev, a := mc.selectMemoryDevice(addr)
 	dev.writeByte(a, b)
 }

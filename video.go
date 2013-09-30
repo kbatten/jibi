@@ -20,17 +20,21 @@ type video struct {
 	mode *uint8
 	t    *uint32
 
-	width  uint8
-	height uint8
+	winX uint8
+	winY uint8
 }
 
-func newVideo() video {
+func newVideo(winX, winY uint8) video {
+	if winX > 160 {
+		winX = 160
+	}
+	if winY > 144 {
+		winY = 144
+	}
 	oam := newRamModule(0xA0, nil)
 	io := newRamModule(0x9, nil)
-	width := uint8(160)
-	height := uint8(144)
 	return video{newRamModule(0x2000, nil), oam, io, make([]uint8, 65536),
-		new(uint8), new(uint32), width, height}
+		new(uint8), new(uint32), winX, winY}
 }
 
 func (v video) readByte(addr addressInterface) uint8 {
@@ -49,7 +53,7 @@ func (v video) drawLine() {
 	curline := v.io.readByte(address(4))
 	line := ""
 	yInd := (uint16(scrollY) + uint16(curline)) * uint16(256)
-	for x := uint8(0); x < /*v.width*/ 115; x++ {
+	for x := uint8(0); x < v.winX; x++ {
 		c := v.frameBuff[uint16(x)+uint16(scrollX)+yInd]
 		// half height pixes don't use grayscale
 		o := " "
@@ -87,7 +91,7 @@ func (v video) drawLine() {
 
 		line += o
 	}
-	if curline < 120 {
+	if curline < v.winY {
 		if curline%2 == 0 {
 			fmt.Printf("\x1B[160D%s", line)
 		} else {
@@ -139,8 +143,7 @@ func (v video) paintBackground(tilemap, tileset uint8) {
 		}
 		v.paintTile(tileData, x, y)
 		x += 8
-		if x >= v.width {
-			x = 0
+		if x == 0 {
 			y += 8
 		}
 	}
@@ -216,7 +219,7 @@ func (v video) step(t uint8) {
 			*v.t -= 204
 			curline := v.io.readByte(address(4)) + 1
 			v.io.writeByte(address(4), curline)
-			if curline == v.height {
+			if curline == 144 {
 				*v.mode = 1 // end of last line
 			} else {
 				*v.mode = 2 // end of line
@@ -227,7 +230,7 @@ func (v video) step(t uint8) {
 			*v.t -= 456
 			curline := v.io.readByte(address(4)) - 10
 			v.io.writeByte(address(4), curline)
-			if curline >= v.height { //underflow
+			if curline >= 144 { //underflow
 				v.blank()
 				v.paint()
 				v.io.writeByte(address(4), 0)

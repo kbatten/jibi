@@ -31,7 +31,7 @@ func main() {
 	})
 
 	cart := newCartridge(rom)
-	v := newVideo()
+	v := newVideo(100, 120)
 	m := newMmu(bios, cart, v)
 	c := newCpu(m)
 
