@@ -34,17 +34,24 @@ func main() {
 	v := newVideo()
 	m := newMmu(bios, cart, v)
 	c := newCpu(m)
+	m.unloadBios()
 
 	fmt.Println(cart)
 	fmt.Println(v)
 	fmt.Println(m)
-	fmt.Println(c)
 	for { //i := 0; i < 5; i++ {
 		t := c.step()
 		v.step(t)
-		fmt.Println(c)
 		if commandTable[c.inst.o].t == 0 {
+			fmt.Println(c)
 			panic("unknown opcode")
+		} else {
+		//	fmt.Println(c)
+		}
+
+		for i, v := range []uint8{0x7C, 0x7C, 0x00, 0xC6, 0xC6, 0x00, 0x00, 0xFE,
+			0xC6, 0xC6, 0x00, 0xC6, 0xC6, 0x00, 0x00, 0x00} {
+			m.writeByte(address(0x8000+i), v)
 		}
 	}
 }
