@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	doc := `usage: go-gboy <rom>`
+	doc := `usage: go-gboy <rom> [-s]`
 	args, _ := docopt.Parse(doc, nil, true, "", false)
 
 	rom := readRomFile(args["<rom>"].(string))
@@ -31,20 +31,31 @@ func main() {
 	})
 
 	cart := newCartridge(rom)
-	v := newVideo()
-	m := newMmu(bios, cart, v)
+	iflags := newInterruptFlags()
+	v := newVideo(iflags, 100, 120)
+	m := newMmu(bios, cart, v, iflags)
 	c := newCpu(m)
+
+	if args["-s"] == true {
+		m.unloadBios()
+	}
 
 	fmt.Println(cart)
 	fmt.Println(v)
 	fmt.Println(m)
-	fmt.Println(c)
 	for { //i := 0; i < 5; i++ {
 		t := c.step()
 		v.step(t)
-		fmt.Println(c)
+
+		//iereg := c.mc.readByte(address(0xFFFF)) // interrupt enable
+		//iflag := c.mc.readByte(address(0xFF0F)) // interrupt flags
+		//fmt.Println(c.ime, iflag, iereg)
+		//fmt.Printf("0x%02X\n", m.readByte(address(0xFF44)))
 		if commandTable[c.inst.o].t == 0 {
+			fmt.Println(c)
 			panic("unknown opcode")
+		} else {
+			//fmt.Println(c)
 		}
 	}
 }

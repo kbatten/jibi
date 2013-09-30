@@ -27,6 +27,9 @@ type cpu struct {
 	// current instruction buffer
 	inst instruction
 
+	// interrupt master enable
+	ime bool
+
 	mc mmu // read/write bytes and words
 }
 
@@ -56,8 +59,12 @@ func newCpu(mc mmu) *cpu {
 	l := newRegister8(nil)
 	h := newRegister8(&l)
 
+	// TODO: fix
+	// enable all interrupts
+	mc.writeByte(address(0xFFFF), 0xFF)
+
 	return &cpu{a: a, b: b, c: c, d: d, e: e, f: f, l: l, h: h,
-		sp: 0xFFFE, pc: 0x0000, mTicker: ticker, mClock: clock, mc: mc}
+		sp: 0xFFFE, pc: 0x0000, mTicker: ticker, mClock: clock, mc: mc, ime: true}
 }
 
 func (c *cpu) String() string {
@@ -83,6 +90,8 @@ func (c *cpu) reset() {
 	c.pc = 0x0000
 	c.m = 0
 	c.t = 0
+	c.mc.writeByte(address(0xFFFF), 0xFF)
+	c.ime = true
 }
 
 func (c *cpu) bit(b, n uint8) {
@@ -346,12 +355,114 @@ func (c *cpu) execute() {
 	}
 }
 
+func (c *cpu) getInterrupt() interrupt {
+	iereg := c.mc.readByte(address(0xFFFF)) // interrupt enable
+	iflag := c.mc.readByte(address(0xFF0F)) // interrupt flags
+	if uint8(interruptVBlank)&iereg&iflag != 0 {
+		return interruptVBlank
+	} else if uint8(interruptLCDC)&iereg&iflag != 0 {
+		return interruptLCDC
+	} else if uint8(interruptTimer)&iereg&iflag != 0 {
+		return interruptTimer
+	} else if uint8(interruptSerial)&iereg&iflag != 0 {
+		return interruptSerial
+	} else if uint8(interruptKeypad)&iereg&iflag != 0 {
+		return interruptKeypad
+	}
+	return 0
+}
+
+func (c *cpu) resetInterrupt(i interrupt) {
+	iflag := c.mc.readByte(address(0xFF0F))
+	iflag &= (uint8(i) ^ 0xFF)
+	c.mc.writeByte(address(0xFF0F), iflag)
+}
+
+// memoryDevice and flag handler
+type interruptFlags struct {
+	v *uint8
+}
+
+func newInterruptFlags() interruptFlags {
+	return interruptFlags{new(uint8)}
+}
+
+func (i interruptFlags) readByte(addr addressInterface) uint8 {
+	return *i.v
+}
+
+func (i interruptFlags) writeByte(addr addressInterface, b uint8) {
+	*i.v = b
+}
+
+func (i interruptFlags) set(in interrupt) {
+	*i.v |= uint8(in)
+}
+
+type interrupt uint8
+
+const (
+	interruptVBlank interrupt = 0x01 << iota
+	interruptLCDC
+	interruptTimer
+	interruptSerial
+	interruptKeypad
+)
+
+func (i interrupt) address() address {
+	switch i {
+	case interruptVBlank:
+		return address(0x0040)
+	case interruptLCDC:
+		return address(0x0048)
+	case interruptTimer:
+		return address(0x0050)
+	case interruptSerial:
+		return address(0x0058)
+	case interruptKeypad:
+		return address(0x0060)
+	default:
+		return address(0)
+	}
+}
+
+func (i interrupt) String() string {
+	switch i {
+	case interruptVBlank:
+		return "VBlank"
+	case interruptLCDC:
+		return "LCDC"
+	case interruptTimer:
+		return "Timer"
+	case interruptSerial:
+		return "Serial"
+	case interruptKeypad:
+		return "Keypad"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+func (c *cpu) interrupt() {
+	if c.ime {
+		c.ime = false
+		in := c.getInterrupt()
+		if in > 0 {
+			panic("interrupt")
+			c.pushWord(uint16(c.pc))
+			c.jp(in.address())
+			c.resetInterrupt(in)
+		}
+	}
+}
+
 func (c *cpu) step() uint8 {
 	// reset clocks
 	c.m = 0
 	c.t = 0
-	c.fetch()   // load next instruction into c.inst
-	c.execute() // execute c.inst instruction
+	c.interrupt() // handle interrupts
+	c.fetch()     // load next instruction into c.inst
+	c.execute()   // execute c.inst instruction
 
 	return c.t
 }

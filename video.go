@@ -9,28 +9,34 @@ type video struct {
 	// 0x0800-0x0FFF tile set 1 128-255, set 0 (-1)-(-128)
 	// 0x1000-0x17FF tile set 0 0-127
 	// 0x1800-0x1BFF tile map 0
-	// 0x1C00-0x1FFF tile map 2
+	// 0x1C00-0x1FFF tile map 1
 	ram memoryDevice
 	// 0x00-0xA0
 	oam memoryDevice
+	io  memoryDevice
 
-	frameBuff []uint8 // uint2
+	iflags interruptFlags // interrupt flags
+
+	frameBuff []uint8 // uint2 256x256
 
 	mode *uint8
-	line *uint8 // TODO: use oam memory
 	t    *uint32
 
-	width  uint8
-	height uint8
+	winX uint8
+	winY uint8
 }
 
-func newVideo() video {
+func newVideo(iflags interruptFlags, winX, winY uint8) video {
+	if winX > 160 {
+		winX = 160
+	}
+	if winY > 144 {
+		winY = 144
+	}
 	oam := newRamModule(0xA0, nil)
-	width := uint8(160)
-	height := uint8(144)
-	return video{newRamModule(0x2000, nil), oam, make([]uint8,
-		uint16(width)*uint16(height)),
-		new(uint8), new(uint8), new(uint32), width, height}
+	io := newRamModule(0x9, nil)
+	return video{newRamModule(0x2000, nil), oam, io, iflags,
+		make([]uint8, 65536), new(uint8), new(uint32), winX, winY}
 }
 
 func (v video) readByte(addr addressInterface) uint8 {
@@ -43,10 +49,14 @@ func (v video) writeByte(addr addressInterface, n uint8) {
 
 // TODO: don't use framebuffer, dynamically build the line at drawtime
 func (v video) drawLine() {
+	scrollX := v.io.readByte(address(0x02))
+	scrollY := v.io.readByte(address(0x03))
+
+	curline := v.io.readByte(address(4))
 	line := ""
-	yInd := uint16(*v.line) * uint16(v.width)
-	for x := uint8(0); x < v.width; x++ {
-		c := v.frameBuff[uint16(x)+yInd]
+	yInd := (uint16(scrollY) + uint16(curline)) * uint16(256)
+	for x := uint8(0); x < v.winX; x++ {
+		c := v.frameBuff[uint16(x)+uint16(scrollX)+yInd]
 		// half height pixes don't use grayscale
 		o := " "
 		if c == 1 {
@@ -83,11 +93,11 @@ func (v video) drawLine() {
 
 		line += o
 	}
-	if *v.line < 120 {
-		if *v.line%2 == 0 {
-			//fmt.Print("\x1B[160D", line)
+	if curline < v.winY {
+		if curline%2 == 0 {
+			fmt.Printf("\x1B[160D%s", line)
 		} else {
-			//fmt.Println("\x1B[160D", line)
+			fmt.Printf("\x1B[160D%s\n", line)
 		}
 	}
 }
@@ -96,7 +106,7 @@ func (v video) paintTile(tileData []uint8, x, y uint8) {
 	addr := 0
 	// convert tile data into 2bpp bitmap
 	for yOff := uint8(0); yOff < 8; yOff++ {
-		yInd := (uint16(y) + uint16(yOff)) * uint16(v.width)
+		yInd := (uint16(y) + uint16(yOff)) * uint16(256)
 		l := tileData[addr]   //v.ram.readByte(address(addr))
 		h := tileData[addr+1] //v.ram.readByte(address(addr + 1))
 		addr += 2
@@ -104,48 +114,94 @@ func (v video) paintTile(tileData []uint8, x, y uint8) {
 		for xOff := uint8(0); xOff < 8; xOff++ {
 			px := (((h >> (7 - xOff)) & 0x01) << 1) + (l>>(7-xOff))&0x01
 			ind := uint16(x) + uint16(xOff) + yInd
-			if ind < uint16(len(v.frameBuff)) {
+			if uint32(ind) < uint32(len(v.frameBuff)) {
 				v.frameBuff[ind] = px
 			}
 		}
 	}
 }
 
-func (v video) blank() {
-	// move to 0,0
-	//fmt.Print("\x1B[H")
+func (v video) paintBackground(tilemap, tileset uint8) {
+	// background
+	// tile map 0 0x1800-0x1BFF
+	// tile set 1 0x0000
+	mapaddr := uint16(0x1800)
+	if tilemap == 1 {
+		mapaddr = 0x1C00
+	}
+	setaddr := uint16(0x1000)
+	if tileset == 1 {
+		setaddr = 0x0000
+	}
 
-	//v.paintTile([]uint8{0x7C, 0x7C, 0x00, 0xC6, 0xC6, 0x00, 0x00, 0xFE,
-	//	0xC6, 0xC6, 0x00, 0xC6, 0xC6, 0x00, 0x00, 0x00}, 4, 4)
-
+	x := uint8(0)
+	y := uint8(0)
 	tileData := make([]uint8, 16)
-	for buffer := 0; buffer < 3; buffer++ {
-		addr := uint16(0x0000)
-		if buffer == 1 {
-			addr = 0x0800
-		} else if buffer == 2 {
-			addr = 0x1000
+	for i := uint16(0x0000); i < 0x0400; i += 16 {
+		tileInd := v.ram.readByte(address(mapaddr + i))
+		ind := setaddr + uint16(tileInd)*16
+		for j := uint16(0); j < 16; j++ {
+			tileData[j] = v.ram.readByte(address(ind + j))
 		}
-		for tile := uint16(0); tile < 6; tile++ {
-			for i := 0; i < 16; i++ {
-				tileData[i] = v.ram.readByte(address(addr + tile*16))
-			}
+		v.paintTile(tileData, x, y)
+		x += 8
+		if x == 0 {
+			y += 8
 		}
 	}
 
+}
+
+func (v video) paint() {
+	lcdCtrl := v.io.readByte(address(0))
+	ctrlBackground := lcdCtrl&0x01 == 0x01
+	ctrlSprites := lcdCtrl&0x02 == 0x02
+	ctrlSpriteSize := lcdCtrl&0x04 == 0x04
+	ctrlBgTileMap := lcdCtrl & 0x08 >> 3
+	ctrlBgTileSet := lcdCtrl & 0x10 >> 4
+	ctrlWindow := lcdCtrl&0x20 == 0x20
+	ctrlWindowTileMap := lcdCtrl & 0x40 >> 6
+	ctrlDisplay := lcdCtrl&0x80 == 0x80
+	fmt.Println(ctrlBackground,
+		ctrlSprites,
+		ctrlSpriteSize,
+		ctrlBgTileMap,
+		ctrlBgTileSet,
+		ctrlWindow,
+		ctrlWindowTileMap,
+		ctrlDisplay)
+	if ctrlBackground {
+		v.paintBackground(ctrlBgTileMap, ctrlBgTileSet)
+	}
+
 	// update frameBuffer to handle two verticle pixels per line
-	for y := uint8(1); y < v.height; y += 2 {
-		for x := uint8(0); x < v.width; x++ {
-			botInd := uint16(y)*uint16(v.width) + uint16(x)
-			upInd := uint16(y-1)*uint16(v.width) + uint16(x)
+	// doesn't work for odd values of scrollY
+	// only b&w, not grayscale
+	for y := uint16(1); y < 256; y += 2 {
+		for x := uint16(0); x < 256; x++ {
+			botInd := uint16(y)*uint16(256) + uint16(x)
+			upInd := uint16(y-1)*uint16(256) + uint16(x)
 			v.frameBuff[botInd] = v.frameBuff[botInd]<<2 + v.frameBuff[upInd]
 		}
 	}
 }
 
+func (v video) blank() {
+	// move to 0,0
+	fmt.Print("\x1B[H")
+	for i := range v.frameBuff {
+		v.frameBuff[i] = 0
+	}
+}
+
 func (v video) step(t uint8) {
+	lcdCtrl := v.io.readByte(address(0))
+	if lcdCtrl&0x80 != 0x80 {
+		// lcd off
+		return
+	}
+
 	*v.t += uint32(t)
-	//	fmt.Println(*v.mode, *v.t, t)
 	switch *v.mode {
 	case 2: // scanline
 		if *v.t >= 80 {
@@ -163,9 +219,11 @@ func (v video) step(t uint8) {
 	case 0: // hblank
 		if *v.t >= 204 {
 			*v.t -= 204
-			*v.line++
-			if *v.line == v.height {
+			curline := v.io.readByte(address(4)) + 1
+			v.io.writeByte(address(4), curline)
+			if curline == 144 {
 				*v.mode = 1 // end of last line
+				v.iflags.set(interruptVBlank)
 			} else {
 				*v.mode = 2 // end of line
 			}
@@ -173,10 +231,12 @@ func (v video) step(t uint8) {
 	case 1: // vblank 10 lines
 		if *v.t >= 456 {
 			*v.t -= 456
-			*v.line -= 10
-			if *v.line >= v.height { //underflow
+			curline := v.io.readByte(address(4)) - 10
+			v.io.writeByte(address(4), curline)
+			if curline >= 144 { //underflow
 				v.blank()
-				*v.line = 0
+				v.paint()
+				v.io.writeByte(address(4), 0)
 				*v.mode = 2
 			}
 		}
