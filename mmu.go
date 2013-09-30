@@ -121,14 +121,15 @@ func (mc mmu) selectMemoryDevice(addr addressInterface) (memoryDevice, address) 
 		return mc.wram, address(a - 0xE000)
 	} else if 0xFE00 <= a && a < 0xFEA0 {
 		return mc.oam, address(a - 0xFE00)
-	} else if 0xFF00 <= a && a < 0xFF40 {
-		return mc.io, address(a - 0xFF00)
+//	} else if 0xFF00 <= a && a < 0xFF40 {
+//		return mc.io, address(a - 0xFF00)
 	} else if 0xFF40 <= a && a < 0xFF49 {
 		return mc.vidIo, address(a - 0xFF40)
 	} else if 0xFF80 <= a && a <= 0xFFFF {
 		return mc.zero, address(a - 0xFF80)
 	}
-	return nilModule{}, address(0)
+	//return nilModule{}, address(0)
+	panic("unhandled memory access")
 }
 
 func (mc mmu) readByte(addr addressInterface) uint8 {

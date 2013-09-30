@@ -175,9 +175,10 @@ func (v video) blank() {
 
 func (v video) step(t uint8) {
 	lcdCtrl := v.io.readByte(address(0))
-	// turn on lcd
-	lcdCtrl |= 0x80
-	v.io.writeByte(address(0), lcdCtrl)
+	if lcdCtrl & 0x80 != 0x80 {
+		// lcd off
+		return
+	}
 
 	*v.t += uint32(t)
 	switch *v.mode {
