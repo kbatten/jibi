@@ -287,7 +287,7 @@ func (c *cpu) jrNF(f uint8, n int8) {
 
 func (c *cpu) jr(n int8) {
 	if n < 0 {
-		c.pc += register16(-n)
+		c.pc -= register16(-n)
 		return
 	}
 	c.pc += register16(n)
