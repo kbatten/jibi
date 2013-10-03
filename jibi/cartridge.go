@@ -1,13 +1,11 @@
-package main
+package jibi
 
 import (
 	"fmt"
 )
 
-type cartridge struct {
-	rom []uint8
-
-	eram memoryDevice
+type Cartridge struct {
+	rom MemoryDevice
 
 	// rom info
 	name    string
@@ -18,12 +16,7 @@ type cartridge struct {
 	ramSize cartridgeRamSize
 }
 
-func newCartridge(rom []uint8) cartridge {
-	romBanks := make([]uint8, 0x8000)
-	copy(romBanks, rom)
-
-	eram := newRamModule(0x2000, nil)
-
+func NewCartridge(mmu MemoryCommander, rom []Byte) *Cartridge {
 	name := ""
 	for _, c := range rom[0x0134 : 0x0142+1] {
 		if c == 0 {
@@ -31,29 +24,32 @@ func newCartridge(rom []uint8) cartridge {
 		}
 		name += string(c)
 	}
+	romDev := NewRomDevice(Word(0x0000), Word(0x8000), rom)
 	color := rom[0x0143] == 0x80
 	super := rom[0x0146] == 0x03
 	ct := cartridgeType(rom[0x0147])
 	romSize := cartridgeRomSize(rom[0x0148])
 	ramSize := cartridgeRamSize(rom[0x0149])
-	return cartridge{romBanks, eram, name, color, super, ct, romSize, ramSize}
+	cart := &Cartridge{
+		romDev, name, color, super, ct, romSize, ramSize}
+
+	// ordered operation is handled by the mmu since we don't do any reads
+	// or writes from this module
+	handler := MemoryHandlerRequest{
+		0x0000, 0x7FFF, romDev,
+	}
+	mmu.RunCommand(CmdHandleMemory, handler)
+
+	return cart
 }
 
-func (c cartridge) readByte(addr addressInterface) uint8 {
-	return c.rom[addr.Uint16()]
-}
-
-func (c cartridge) writeByte(addr addressInterface, n uint8) {
-	// rom only
-}
-
-func (c cartridge) String() string {
+func (c *Cartridge) String() string {
 	return fmt.Sprintf(`name: %s
-romSize: %s (%d)
+romSize: %s
 ramSize: %s
 color: %v
 super: %v
-type: %s`, c.name, c.romSize, len(c.rom), c.ramSize, c.color, c.super, c.ct)
+type: %s`, c.name, c.romSize, c.ramSize, c.color, c.super, c.ct)
 }
 
 type cartridgeType uint8
@@ -117,48 +113,56 @@ func (ct cartridgeType) String() string {
 
 type cartridgeRomSize uint8
 
-func (cs cartridgeRomSize) String() string {
+func (cs cartridgeRomSize) banks() int {
 	switch cs {
 	case 0x00:
-		return "00-256Kbit,32KByte,2banks"
+		return 2
 	case 0x01:
-		return "01-512Kbit,64KByte,4banks"
+		return 4
 	case 0x02:
-		return "02-1Mbit,128KByte,8banks"
+		return 8
 	case 0x03:
-		return "03-2Mbit,256KByte,16banks"
+		return 16
 	case 0x04:
-		return "04-4Mbit,512KByte,32banks"
+		return 32
 	case 0x05:
-		return "05-8Mbit,1MByte,64banks"
+		return 64
 	case 0x06:
-		return "06-16Mbit,2MByte,128banks"
+		return 128
 	case 0x52:
-		return "52-9Mbit,1.1MByte,72banks"
+		return 72
 	case 0x53:
-		return "53-10Mbit,1.2MByte,80banks"
+		return 80
 	case 0x54:
-		return "54-12Mbit,1.5MByte,96banks"
-	default:
-		return fmt.Sprintf("%0X-UNKNOWN")
+		return 96
 	}
+	return 0
+}
+
+func (cs cartridgeRomSize) String() string {
+	return fmt.Sprintf("%02X-%dKbit,%dKByte,%dbanks",
+		uint8(cs), cs.banks()*128, cs.banks()*16, cs.banks())
 }
 
 type cartridgeRamSize uint8
 
-func (cs cartridgeRamSize) String() string {
+func (cs cartridgeRamSize) banks() int {
 	switch cs {
 	case 0x00:
-		return "00-None"
+		return 0
 	case 0x01:
-		return "01-16kBit,2kByte,1bank"
+		return 1
 	case 0x02:
-		return "02-64kBit,8kByte,1bank"
+		return 2
 	case 0x03:
-		return "03-256kBit,32kByte,4banks"
+		return 4
 	case 0x04:
-		return "04-1MBit,128kByte,16banks"
-	default:
-		return fmt.Sprintf("%0X-UNKNOWN")
+		return 16
 	}
+	return 0
+}
+
+func (cs cartridgeRamSize) String() string {
+	return fmt.Sprintf("%02X-%dKbit,%dKByte,%dbanks",
+		uint8(cs), cs.banks()*128, cs.banks()*16, cs.banks())
 }

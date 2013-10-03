@@ -6,8 +6,17 @@ import (
 	"strings"
 )
 
-func bytesToWord(high, low Byte) Word {
-	return Word(uint16(high)<<8 + uint16(low))
+func ReadWord(m MemoryDevice, addr Worder) Word {
+	return BytesToWord(m.ReadByteAt(addr.Word()+1), m.ReadByteAt(addr))
+}
+
+func WriteWord(m MemoryDevice, addr Worder, w Worder) {
+	m.WriteByteAt(addr, w.Low())
+	m.WriteByteAt(addr.Word()+1, w.High())
+}
+
+func BytesToWord(high, low Byter) Word {
+	return Word(uint16(high.Byte())<<8 + uint16(low.Byte()))
 }
 
 func readRomZipFile(filename string) ([]byte, error) {

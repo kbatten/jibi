@@ -1,42 +1,116 @@
 package jibi
 
+import (
+	"fmt"
+	"time"
+)
+
 type Options struct {
 	Skipbios bool
+	Render   bool
+	Quick    bool
 }
 
 type Jibi struct {
 	O Options
-	Q chan error // quit channel
 
-	m *Mmu
-	c *Cpu
+	mmu  *Mmu
+	cpu  *Cpu
+	irq  *Irq
+	lcd  Lcd
+	gpu  *Gpu
+	cart *Cartridge
+	kp   *Keypad
 }
-
-// TODO: move to mmu.go
-// The MMU is the generic to<->from addressing interface that all modules will
-// use. The MMU maps back into each module as needed. So a module can access
-// its own memory locally, it can also access it through the MMU. A module
-// must use the MMU for all external memory access.
 
 func New(rom []Byte, options Options) Jibi {
-	c := NewCpu()
-	m := NewMmu()
-	c.ConnectMmu(m)
-	quit := make(chan error, 1)
+	mmu := NewMmu(bios)
+	irq := NewIrq(mmu)
+	cpu := NewCpu(mmu, irq)
+	lcd := NewLcdAscii()
+	gpu := NewGpu(mmu, irq, lcd, cpu.Clock())
+	cart := NewCartridge(mmu, rom)
+	kp := NewKeypad(mmu, options.Quick)
 
-	return Jibi{options, quit, m, c}
+	if options.Skipbios {
+		mmu.RunCommand(CmdUnloadBios, nil)
+	}
+	if !options.Render {
+		lcd.DisableRender()
+	}
+
+	return Jibi{options, mmu, cpu, irq, lcd, gpu, cart, kp}
 }
 
-func (j Jibi) Run() error {
+func (j Jibi) RunCommand(cmd Command, resp chan string) {
+	if cmd < cmdMMU {
+		j.mmu.RunCommand(cmd, resp)
+	} else if cmd < cmdCPU {
+		j.cpu.RunCommand(cmd, resp)
+	} else if cmd < cmdGPU {
+		j.gpu.RunCommand(cmd, resp)
+	} else if cmd < cmdKEYPAD {
+		j.kp.RunCommand(cmd, resp)
+	} else if cmd < cmdALL {
+		j.cpu.RunCommand(cmd, resp)
+		j.mmu.RunCommand(cmd, resp)
+		j.gpu.RunCommand(cmd, resp)
+		j.kp.RunCommand(cmd, resp)
+	} else if cmd < cmdCPUGPU {
+		j.cpu.RunCommand(cmd, resp)
+		j.gpu.RunCommand(cmd, resp)
+	}
+}
+
+func (j Jibi) Run() {
+	//resp := make(chan string)
+	//j.RunCommand(CmdNotifyInstruction, resp)
+	//j.RunCommand(CmdNotifyUnhandledMemory, resp)
+	//j.RunCommand(CmdNotifyFrame, resp)
+	cpuClk := j.cpu.Clock()
 	j.Play()
-	return <-j.Q
+	ticker := time.NewTicker(time.Second)
+	for running := true; running; {
+		select {
+		case <-ticker.C:
+			cpuHz := float64(0)
+			for loop := true; loop; {
+				select {
+				case t := <-cpuClk:
+					cpuHz += float64(t)
+				default:
+					loop = false
+				}
+			}
+			if j.O.Render {
+				fmt.Printf("\x1B[s\x1B[59;0H\x1B[K\n"+
+					"\x1B[K\n"+
+					"\x1B[K\n"+
+					"\x1B[K\n"+
+					"\x1B[K\n"+
+					"\x1B[K"+
+					"\x1B[59;0H%s\n%s\n"+
+					"cpu: %.2fMhz\x1B[u", j.cpu, j.kp, cpuHz/1e6)
+			} else {
+				fmt.Printf("%s\n%s\ncpu: %.2fMhz\n", j.cpu, j.kp, cpuHz/1e6)
+			}
+			if j.O.Quick {
+				running = false
+			}
+		}
+	}
+	ticker.Stop()
+	j.Stop()
 }
 
 func (j Jibi) Play() {
-	go func() {
-		for i := 0; i < 5; i++ {
-			j.c.Step() // TODO: have the cpu have its own go func
-		}
-		j.Q <- nil
-	}()
+	j.RunCommand(CmdPlay, nil)
+}
+
+func (j Jibi) Pause() {
+	j.RunCommand(CmdPause, nil)
+}
+
+func (j Jibi) Stop() {
+	j.RunCommand(CmdStop, nil)
 }

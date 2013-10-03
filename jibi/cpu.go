@@ -6,6 +6,8 @@ import (
 )
 
 type Cpu struct {
+	Commander
+
 	// registers
 	a  register8
 	b  register8
@@ -19,9 +21,9 @@ type Cpu struct {
 	pc register16
 
 	// clocks
-	tClock chan uint32 // clock cycles since last
-	m      uint8       // machine cycles
-	t      uint8       // clock cycles
+	tClocks []*clock // t clock cycle exported clocks
+	m       uint8    // machine cycles
+	t       uint8    // clock cycles
 
 	// current instruction buffer
 	inst instruction
@@ -29,21 +31,26 @@ type Cpu struct {
 	// interrupt master enable
 	ime Bit
 
-	mm MmuConnection // read/write bytes and words
+	mmu MemoryCommander
+	irq *Irq
+
+	zero MemoryDevice
+
+	// internal state
+	biosFinished bool
 
 	// cpu information
 	hz     float64
 	period time.Duration
 }
 
-func NewCpu() *Cpu {
+func NewCpu(mmu MemoryCommander, irq *Irq) *Cpu {
 	// use internal clock
 	// 1 machine cycle = 4 clock cycles
 	// machine cycles: 1.05MHz nop: 1 cycle
 	// clock cycles: 4.19MHz nop: 4 cycles
 	hz := 4.194304 * 1e6 / 4.0 // 4.19MHz clock to 1.05 machine cycles
 	period := time.Duration(1e9 / hz)
-	clock := make(chan uint32)
 
 	f := newFlagsRegister8()
 	a := newRegister8(&f)
@@ -54,84 +61,154 @@ func NewCpu() *Cpu {
 	l := newRegister8(nil)
 	h := newRegister8(&l)
 
-	return &Cpu{a: a, b: b, c: c, d: d, e: e, f: f, l: l, h: h,
-		tClock: clock, ime: Bit(1),
-		hz: hz, period: period,
+	commander := NewCommander("cpu")
+
+	cpu := &Cpu{Commander: commander,
+		a: a, b: b, c: c, d: d, e: e, f: f, l: l, h: h,
+		ime: Bit(1),
+		mmu: mmu, irq: irq,
+		zero: NewRamDevice(Word(0xFF80), Word(0x7F), nil),
+		hz:   hz, period: period,
+	}
+	cmdHandlers := map[Command]CommandFn{
+		CmdClock:  cpu.cmdClock,
+		CmdString: cpu.cmdString,
+	}
+	commander.Start(cpu.step, cmdHandlers, nil)
+
+	handler := MemoryHandlerRequest{0xFF80, 0xFFFE, cpu}
+	mmu.RunCommand(CmdHandleMemory, handler)
+	return cpu
+}
+
+func (c *Cpu) cmdClock(resp interface{}) {
+	if resp, ok := resp.(chan chan ClockType); !ok {
+		panic("invalid command response type")
+	} else {
+		clk := make(chan ClockType, 1)
+		c.tClocks = append(c.tClocks, newClock(clk))
+		resp <- clk
 	}
 }
 
-func (c *Cpu) String() string {
-	return fmt.Sprintf(`%v
-    a:%v b:%v c:%v d:%v e:%v f:%v h:%v l:%v
-    af:0x%04X bc:0x%04X de:0x%04X hl:0x%04X sp:%v pc:%v
-	%s`,
+func (c *Cpu) cmdString(resp interface{}) {
+	if resp, ok := resp.(chan string); !ok {
+		panic("invalid command response type")
+	} else {
+		resp <- c.str()
+	}
+}
+
+func (c *Cpu) str() string {
+	return fmt.Sprintf(`%s
+a:%s b:%s c:%s d:%s e:%s f:%s h:%s l:%s
+af:0x%04X bc:0x%04X de:0x%04X hl:0x%04X sp:%s pc:%s
+%s`,
 		c.inst, c.a, c.b, c.c, c.d, c.e, c.f, c.h, c.l,
-		c.a.Uint16(), c.b.Uint16(), c.d.Uint16(), c.h.Uint16(), c.sp, c.pc,
+		c.a.Byte(), c.b.Byte(), c.d.Byte(), c.h.Byte(), c.sp, c.pc,
 		c.f.flagsString())
 }
 
-func (c *Cpu) ConnectMmu(m *Mmu) {
-	c.mm = m.Connect()
+func (c *Cpu) String() string {
+	resp := make(chan string)
+	c.RunCommand(CmdString, resp)
+	return <-resp
 }
 
-func (c *Cpu) reset() {
-	c.a.reset()
-	c.b.reset()
-	c.c.reset()
-	c.d.reset()
-	c.e.reset()
-	c.f.reset()
-	c.h.reset()
-	c.l.reset()
-	c.sp = 0x0000
-	c.pc = 0x0000
-	c.m = 0
-	c.t = 0
-	c.mm.writeByte(Word(0xFFFF), Byte(0xFF))
-	c.ime = 1
+func (c *Cpu) ReadByteAt(addr Worder) Byte {
+	req := ReadByteAtReq{addr.Word(), make(chan Byte)}
+	c.RunCommand(CmdReadByteAt, req)
+	return <-req.b
 }
 
-// z reset
-// n reset
-// h and c set or reset according to operation
-func (c *Cpu) addWordR(a Worder, b Byter) Word {
-	h := a.High()
-	l := a.Low()
-	bi := int8(b.Uint8())
-	if bi < 0 {
-		b = Byte(uint8(-bi))
-		l = c.sub(l, b)
-		h = c.sbc(h, Byte(0))
-		c.f.resetFlag(flagZ)
-		c.f.resetFlag(flagN)
-		return bytesToWord(h, l)
+func (c *Cpu) WriteByteAt(addr Worder, b Byter) {
+	req := WriteByteAtReq{addr.Word(), b.Byte()}
+	c.RunCommand(CmdWriteByteAt, req)
+}
+
+func (c *Cpu) readByte(addr Worder) Byte {
+	a := addr.Word()
+	if 0xFF80 <= a && a <= 0xFFFE {
+		return c.zero.ReadByteAt(addr)
 	}
-	l = c.add(l, b)
-	h = c.adc(h, Byte(0))
-	c.f.resetFlag(flagZ)
-	c.f.resetFlag(flagN)
-	return bytesToWord(h, l)
+	return c.mmu.ReadByteAt(a)
+}
+
+func (c *Cpu) writeByte(addr Worder, b Byter) {
+	a := addr.Word()
+	if 0xFF80 <= a && a <= 0xFFFE {
+		c.zero.WriteByteAt(addr, b)
+	} else {
+		c.mmu.WriteByteAt(addr, b)
+	}
+}
+
+func (c *Cpu) readWord(addr Worder) Word {
+	l := c.readByte(addr)
+	h := c.readByte(addr.Word() + 1)
+	return BytesToWord(h, l)
+}
+
+func (c *Cpu) writeWord(addr Worder, w Worder) {
+	c.writeByte(addr, w.Low())
+	c.writeByte(addr.Word()+1, w.High())
+}
+
+// a clock sends number of clock cycle since last successful send
+// so if a non-blocking send fails, the cycles accumulate
+// on successful send the cycles is reset
+// sends happen on machine cycle end
+type ClockType uint32
+type clock struct {
+	v ClockType
+	c chan ClockType
+}
+
+func newClock(c chan ClockType) *clock {
+	return &clock{ClockType(0), c}
+}
+
+func (c *clock) addCycles(cycles uint8) {
+	c.v += ClockType(cycles)
+	//v := uint8(c.v)
+	//if c.v > 255 {
+	//	v = 255
+	//}
+
+	select {
+	case c.c <- c.v:
+		//c.v -= ClockType(v)
+		c.v = 0
+	default:
+	}
+}
+
+func (c *Cpu) Clock() chan ClockType {
+	resp := make(chan chan ClockType)
+	c.RunCommand(CmdClock, resp)
+	return <-resp
 }
 
 func (c *Cpu) fetch() {
-	op := opcode(c.mm.readByte(c.pc))
+	op := opcode(c.readByte(c.pc))
 	c.pc++
 	if op == 0xCB {
-		op = opcode(0xCB00 + uint16(c.mm.readByte(c.pc)))
+		op = opcode(0xCB00 + uint16(c.readByte(c.pc)))
 		c.pc++
 	}
 	command := commandTable[op]
 	c.inst = newInstruction(op)
 
 	for i := uint8(0); i < command.b; i++ {
-		c.inst.p = append(c.inst.p, c.mm.readByte(c.pc))
+		c.inst.p = append(c.inst.p, c.readByte(c.pc))
 		c.pc++
 	}
 }
 
 func (c *Cpu) execute() {
-	if c.pc == 0x0100 {
-		c.mm.unloadBios()
+	if !c.biosFinished && c.pc == 0x0100 {
+		c.mmu.RunCommand(CmdUnloadBios, nil)
+		c.biosFinished = true
 	}
 	if cmd, ok := commandTable[c.inst.o]; ok {
 		cmd.f(c)
@@ -140,108 +217,19 @@ func (c *Cpu) execute() {
 	}
 }
 
-func (c *Cpu) getInterrupt() interrupt {
-	iereg := c.mm.readByte(Word(0xFFFF)) // interrupt enable
-	iflag := c.mm.readByte(Word(0xFF0F)) // interrupt flags
-	if Byte(interruptVBlank)&iereg&iflag != 0 {
-		return interruptVBlank
-	} else if Byte(interruptLCDC)&iereg&iflag != 0 {
-		return interruptLCDC
-	} else if Byte(interruptTimer)&iereg&iflag != 0 {
-		return interruptTimer
-	} else if Byte(interruptSerial)&iereg&iflag != 0 {
-		return interruptSerial
-	} else if Byte(interruptKeypad)&iereg&iflag != 0 {
-		return interruptKeypad
-	}
-	return 0
-}
-
-func (c *Cpu) resetInterrupt(i interrupt) {
-	iflag := c.mm.readByte(Word(0xFF0F))
-	iflag &= (Byte(i) ^ 0xFF)
-	c.mm.writeByte(Word(0xFF0F), iflag)
-}
-
-// memoryDevice and flag handler
-type interruptFlags struct {
-	v *uint8
-}
-
-func newInterruptFlags() interruptFlags {
-	return interruptFlags{new(uint8)}
-}
-
-func (i interruptFlags) readByte(addr Worder) uint8 {
-	return *i.v
-}
-
-func (i interruptFlags) writeByte(addr Worder, b uint8) {
-	*i.v = b
-}
-
-func (i interruptFlags) set(in interrupt) {
-	*i.v |= uint8(in)
-}
-
-type interrupt uint8
-
-const (
-	interruptVBlank interrupt = 0x01 << iota
-	interruptLCDC
-	interruptTimer
-	interruptSerial
-	interruptKeypad
-)
-
-func (i interrupt) Word() Word {
-	switch i {
-	case interruptVBlank:
-		return Word(0x0040)
-	case interruptLCDC:
-		return Word(0x0048)
-	case interruptTimer:
-		return Word(0x0050)
-	case interruptSerial:
-		return Word(0x0058)
-	case interruptKeypad:
-		return Word(0x0060)
-	default:
-		return Word(0)
-	}
-}
-
-func (i interrupt) String() string {
-	switch i {
-	case interruptVBlank:
-		return "VBlank"
-	case interruptLCDC:
-		return "LCDC"
-	case interruptTimer:
-		return "Timer"
-	case interruptSerial:
-		return "Serial"
-	case interruptKeypad:
-		return "Keypad"
-	default:
-		return "UNKNOWN"
-	}
-}
-
 func (c *Cpu) interrupt() {
 	if c.ime == 1 {
 		c.ime = 0
-		in := c.getInterrupt()
+		in := c.irq.GetInterrupt()
 		if in > 0 {
-			panic("interrupt")
 			c.push(c.pc)
-			c.jp(in.Word())
-			c.resetInterrupt(in)
+			c.jp(in.Address())
+			c.irq.ResetInterrupt(in)
 		}
 	}
 }
 
-func (c *Cpu) Step() uint8 {
+func (c *Cpu) step(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
 	// reset clocks
 	c.m = 0
 	c.t = 0
@@ -249,5 +237,9 @@ func (c *Cpu) Step() uint8 {
 	c.fetch()     // load next instruction into c.inst
 	c.execute()   // execute c.inst instruction
 
-	return c.t
+	for _, clk := range c.tClocks {
+		clk.addCycles(c.t)
+	}
+
+	return c.step, false, 0, 0
 }

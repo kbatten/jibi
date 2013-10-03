@@ -24,8 +24,30 @@ func (i instruction) String() string {
 	return fmt.Sprintf("%s [ 0x%02X %s]", i.o, uint16(i.o), ps)
 }
 
+// z reset
+// n reset
+// h and c set or reset according to operation
+func (c *Cpu) addWordR(a Worder, b Byter) Word {
+	h := a.High()
+	l := a.Low()
+	bi := int8(b.Byte())
+	if bi < 0 {
+		b = Byte(uint8(-bi))
+		l = c.sub(l, b)
+		h = c.sbc(h, Byte(0))
+		c.f.resetFlag(flagZ)
+		c.f.resetFlag(flagN)
+		return BytesToWord(h, l)
+	}
+	l = c.add(l, b)
+	h = c.adc(h, Byte(0))
+	c.f.resetFlag(flagZ)
+	c.f.resetFlag(flagN)
+	return BytesToWord(h, l)
+}
+
 func (c *Cpu) bit(b uint8, n Byter) {
-	set := 1<<b&n.Uint8() == 1<<b
+	set := 1<<b&n.Byte() == 1<<b
 	if !set {
 		c.f.setFlag(flagZ)
 	} else {
@@ -36,7 +58,7 @@ func (c *Cpu) bit(b uint8, n Byter) {
 }
 
 func (c *Cpu) xor(a, b Byter) Byte {
-	r := a.Uint8() ^ b.Uint8()
+	r := a.Byte() ^ b.Byte()
 	c.f.reset()
 	if r == 0 {
 		c.f.setFlag(flagZ)
@@ -45,7 +67,7 @@ func (c *Cpu) xor(a, b Byter) Byte {
 }
 
 func (c *Cpu) and(a, b Byter) Byte {
-	r := a.Uint8() & b.Uint8()
+	r := a.Byte() & b.Byte()
 	c.f.reset()
 	if r == 0 {
 		c.f.setFlag(flagZ)
@@ -55,7 +77,7 @@ func (c *Cpu) and(a, b Byter) Byte {
 }
 
 func (c *Cpu) or(a, b Byter) Byte {
-	r := a.Uint8() | b.Uint8()
+	r := a.Byte() | b.Byte()
 	c.f.reset()
 	if r == 0 {
 		c.f.setFlag(flagZ)
@@ -64,14 +86,14 @@ func (c *Cpu) or(a, b Byter) Byte {
 }
 
 func (c *Cpu) inc(a Byter) Byte {
-	r := a.Uint8() + 1
+	r := a.Byte() + 1
 	if r == 0 {
 		c.f.setFlag(flagZ)
 	} else {
 		c.f.resetFlag(flagZ)
 	}
 	c.f.resetFlag(flagN)
-	if a.Uint8()&0x0F == 0x0F {
+	if a.Byte()&0x0F == 0x0F {
 		c.f.setFlag(flagH)
 	} else {
 		c.f.resetFlag(flagH)
@@ -80,14 +102,14 @@ func (c *Cpu) inc(a Byter) Byte {
 }
 
 func (c *Cpu) dec(a Byter) Byte {
-	r := a.Uint8() - 1
+	r := a.Byte() - 1
 	if r == 0 {
 		c.f.setFlag(flagZ)
 	} else {
 		c.f.resetFlag(flagZ)
 	}
 	c.f.setFlag(flagN)
-	if a.Uint8()&0x0F != 0x0F {
+	if a.Byte()&0x0F != 0x0F {
 		c.f.setFlag(flagH)
 	} else {
 		c.f.resetFlag(flagH)
@@ -96,70 +118,70 @@ func (c *Cpu) dec(a Byter) Byte {
 }
 
 func (c *Cpu) sbc(a, b Byter) Byte {
-	carry := uint8(0)
+	carry := Byte(0)
 	if c.f.getFlag(flagC) {
 		carry = 1
 	}
-	r := a.Uint8() - (b.Uint8() + carry)
+	r := a.Byte() - (b.Byte() + carry)
 	c.f.reset()
 	if r == 0 {
 		c.f.setFlag(flagZ)
 	}
 	c.f.setFlag(flagN)
-	if a.Uint8()&0x0F >= (b.Uint8()&0x0F + carry) {
+	if a.Byte()&0x0F >= (b.Byte()&0x0F + carry) {
 		c.f.setFlag(flagH)
 	}
-	if a.Uint8() >= b.Uint8()+carry {
+	if a.Byte() >= b.Byte()+carry {
 		c.f.setFlag(flagC)
 	}
 	return Byte(r)
 }
 
 func (c *Cpu) sub(a, b Byter) Byte {
-	r := a.Uint8() - b.Uint8()
+	r := a.Byte() - b.Byte()
 	c.f.reset()
 	if r == 0 {
 		c.f.setFlag(flagZ)
 	}
 	c.f.setFlag(flagN)
-	if a.Uint8()&0x0F >= b.Uint8()&0x0F {
+	if a.Byte()&0x0F >= b.Byte()&0x0F {
 		c.f.setFlag(flagH)
 	}
-	if a.Uint8() >= b.Uint8() {
+	if a.Byte() >= b.Byte() {
 		c.f.setFlag(flagC)
 	}
 	return Byte(r)
 }
 
 func (c *Cpu) adc(a, b Byter) Byte {
-	carry := uint8(0)
+	carry := Byte(0)
 	if c.f.getFlag(flagC) {
 		carry = 1
 	}
-	r := a.Uint8() + b.Uint8() + carry
+	r := a.Byte() + b.Byte() + carry
 	c.f.reset()
 	if r == 0 {
 		c.f.setFlag(flagZ)
 	}
-	if a.Uint8()&0x0F+b.Uint8()&0x0F+carry > 0x0F {
+	if a.Byte()&0x0F+b.Byte()&0x0F+carry > 0x0F {
 		c.f.setFlag(flagH)
 	}
-	if uint16(a.Uint8())+uint16(b.Uint8())+uint16(carry) > 0xFF {
+	if uint16(a.Byte())+uint16(b.Byte())+uint16(carry) > 0xFF {
 		c.f.setFlag(flagC)
 	}
 	return Byte(r)
 }
 
 func (c *Cpu) add(a, b Byter) Byte {
-	r := a.Uint8() + b.Uint8()
+	r := a.Byte() + b.Byte()
 	c.f.reset()
 	if r == 0 {
 		c.f.setFlag(flagZ)
 	}
-	if a.Uint8()&0x0F+b.Uint8()&0x0F > 0x0F {
+	if a.Byte()&0x0F+b.Byte()&0x0F > 0x0F {
 		c.f.setFlag(flagH)
 	}
-	if uint16(a.Uint8())+uint16(b.Uint8()) > 0xFF {
+	if uint16(a.Byte())+uint16(b.Byte()) > 0xFF {
 		c.f.setFlag(flagC)
 	}
 	return Byte(r)
@@ -167,7 +189,7 @@ func (c *Cpu) add(a, b Byter) Byte {
 
 // rotate right through carry (yes, naming is odd)
 func (c *Cpu) rr(n Byter) Byte {
-	r := n.Uint8() >> 1
+	r := n.Byte() >> 1
 	if c.f.getFlag(flagC) { // old carry is bit 7
 		r += 1 << 7
 	}
@@ -175,7 +197,7 @@ func (c *Cpu) rr(n Byter) Byte {
 	if r == 0 {
 		c.f.setFlag(flagZ)
 	}
-	if n.Uint8()&0x01 == 0x01 { // carry is old bit 0
+	if n.Byte()&0x01 == 0x01 { // carry is old bit 0
 		c.f.setFlag(flagC)
 	}
 	return Byte(r)
@@ -183,7 +205,7 @@ func (c *Cpu) rr(n Byter) Byte {
 
 // rotate left through carry
 func (c *Cpu) rl(n Byter) Byte {
-	r := n.Uint8() << 1
+	r := n.Byte() << 1
 	if c.f.getFlag(flagC) { // old carry is bit 0
 		r += 1
 	}
@@ -191,7 +213,20 @@ func (c *Cpu) rl(n Byter) Byte {
 	if r == 0 {
 		c.f.setFlag(flagZ)
 	}
-	if n.Uint8()&0x80 == 0x80 { // carry is old bit 7
+	if n.Byte()&0x80 == 0x80 { // carry is old bit 7
+		c.f.setFlag(flagC)
+	}
+	return Byte(r)
+}
+
+// rotate left, old bit 7 to carry
+func (c *Cpu) rlc(n Byter) Byte {
+	r := n.Byte()>>7 + n.Byte()<<1
+	c.f.reset()
+	if r == 0 {
+		c.f.setFlag(flagZ)
+	}
+	if n.Byte()&0x80 == 0x80 { // carry is old bit 7
 		c.f.setFlag(flagC)
 	}
 	return Byte(r)
@@ -218,7 +253,7 @@ func (c *Cpu) jr(n int8) {
 }
 
 func (c *Cpu) jp(addr Worder) {
-	c.pc = register16(addr.Uint16())
+	c.pc = register16(addr.Word())
 }
 
 func (c *Cpu) callF(f Byte, addr Worder) {
@@ -233,12 +268,11 @@ func (c *Cpu) call(addr Worder) {
 }
 
 func (c *Cpu) pop() Word {
-	r := c.mm.readWord(c.sp)
 	c.sp += 2
-	return r
+	return c.readWord(c.sp - 2)
 }
 
 func (c *Cpu) push(w Worder) {
-	c.mm.writeWord(c.sp-2, w)
 	c.sp -= 2
+	c.writeWord(c.sp, w)
 }

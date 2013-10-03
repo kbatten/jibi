@@ -5,48 +5,47 @@ import (
 )
 
 type register8 struct {
-	vp   *uint8
+	vp   *Byte
 	lrp  *register8 // lsb of register pair
-	mask uint8
+	mask Byte
 }
 
 func newFlagsRegister8() register8 {
-	return register8{new(uint8), nil, 0xF0}
+	return register8{new(Byte), nil, 0xF0}
 }
 
 func newRegister8(lrp *register8) register8 {
-	return register8{new(uint8), lrp, 0xFF}
+	return register8{new(Byte), lrp, 0xFF}
 }
 
 func (r register8) String() string {
 	return fmt.Sprintf("0x%02X", *r.vp)
 }
 
-func (r register8) Uint16() uint16 {
-	return uint16(bytesToWord(r.High(), r.Low()))
+func (r register8) Word() Word {
+	if r.lrp == nil {
+		panic("lower register is nil")
+	}
+	return BytesToWord(r, r.lrp)
 }
 
 func (r register8) High() Byte {
-	return Byte(r.Uint8())
+	return r.Byte()
 }
 
 func (r register8) Low() Byte {
 	if r.lrp == nil {
 		panic("lower register is nil")
 	}
-	return Byte(r.lrp.Uint8())
+	return r.lrp.Byte()
 }
 
-func (r register8) Inc() Word {
-	return Word(r.Uint16() + 1)
-}
-
-func (r register8) Uint8() uint8 {
+func (r register8) Byte() Byte {
 	return *r.vp & r.mask
 }
 
 func (r register8) set(v Byter) {
-	*r.vp = v.Uint8()
+	*r.vp = v.Byte()
 }
 
 func (r register8) reset() {
@@ -98,15 +97,15 @@ func (r register8) flagsString() string {
 //}
 
 func (r register8) setFlag(f Byter) {
-	*r.vp |= f.Uint8()
+	*r.vp |= f.Byte()
 }
 
 func (r register8) resetFlag(f Byter) {
-	*r.vp &= (f.Uint8() ^ 0xFF)
+	*r.vp &= (f.Byte() ^ 0xFF)
 }
 
 func (r register8) getFlag(f Byter) bool {
-	if *r.vp&f.Uint8() == f.Uint8() {
+	if *r.vp&f.Byte() == f.Byte() {
 		return true
 	}
 	return false
@@ -118,16 +117,16 @@ func (r register16) Uint16() uint16 {
 	return uint16(r)
 }
 
+func (r register16) Word() Word {
+	return Word(r)
+}
+
 func (r register16) High() Byte {
 	return Byte(r >> 8)
 }
 
 func (r register16) Low() Byte {
 	return Byte(r)
-}
-
-func (r register16) Inc() Word {
-	return Word(r.Uint16() + 1)
 }
 
 func (r register16) String() string {

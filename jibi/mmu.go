@@ -1,104 +1,326 @@
 package jibi
 
-type Mmu struct {
-	// communications
-	read  chan mmuRead
-	write chan mmuWrite
-	cmd   chan mmuCommand
+import (
+	"fmt"
+)
 
-	// memory banks
+// Mmu is the memory management unit. The purpose is to dispatch read and
+// write requeststo the appropriate module (cpu, gpu, etc) based on the memory
+// address.
+type Mmu struct {
+	Commander
+
+	// memory
+	bios     MemoryDevice
+	handlers []memoryHandler
 
 	// internal state
 	biosFinished bool
+
+	// notifications
+	notifyUnhandledMemory []chan string
 }
 
-func NewMmu() *Mmu {
-	m := &Mmu{make(chan mmuRead), make(chan mmuWrite), make(chan mmuCommand), false}
-	go loopMmu(m) //m.loop()
-	return m
+// NewMmu creates a new Mmu with an optional bios that replaces 0x0000-0x00FF.
+func NewMmu(bios []Byte) *Mmu {
+	biosFinished := false
+	if len(bios) == 0 {
+		biosFinished = true
+	}
+	// add ram only handlers
+	workingRam := NewEchoRamDevice(Word(0xC000), Word(0xE000), Word(0x2000), nil)
+	handlers := []memoryHandler{
+		memoryHandler{0xC000, 0xDFFF, workingRam},  // internal
+		memoryHandler{0xE000, 0xFDFF, workingRam},  // echo
+		memoryHandler{0xFEA0, 0xFEFF, nilModule{}}, // unusable
+	}
+	commander := NewCommander("mmu")
+	mmu := &Mmu{
+		commander,
+		NewRomDevice(Word(0x0000), Word(0xFF), bios),
+		handlers,
+		biosFinished,
+		[]chan string{}}
+	cmdHandlers := map[Command]CommandFn{
+		CmdHandleMemory: mmu.cmdHandleMemory,
+		CmdReadByteAt:   mmu.cmdReadByteAt,
+		CmdWriteByteAt:  mmu.cmdWriteByteAt,
+	}
+	commander.Start(nil, cmdHandlers, nil)
+	return mmu
 }
 
-// TODO: rename
-func (m *Mmu) rb(addr Worder) byte {
-	return 0
-}
-
-// TODO: rename
-func (m *Mmu) wb(addr Worder, b byte) {
-}
-
-func loopMmu(m *Mmu) {
-	//func (m Mmu) loop() {
-	for {
-		select {
-		case mr := <-m.read:
-			mr.resp <- m.rb(mr.addr)
-		case mr := <-m.write:
-			m.wb(mr.addr, mr.data)
-		case mr := <-m.cmd:
-			switch mr {
-			case mmuCmdStop:
-				break
-			case mmuCmdUnloadBios:
-				m.biosFinished = true
-				break
-			default:
-				panic("unknown mmu command")
-			}
-		}
+func (m *Mmu) cmdHandleMemory(resp interface{}) {
+	if v, ok := resp.(MemoryHandlerRequest); !ok {
+		panic("invalid command response type")
+	} else {
+		handler := memoryHandler{v.start, v.end, v.dev}
+		m.handlers = append(m.handlers, handler)
 	}
 }
 
-type mmuWrite struct {
+func (m *Mmu) cmdReadByteAt(resp interface{}) {
+	if req, ok := resp.(ReadByteAtReq); !ok {
+		panic("invalid command response type")
+	} else {
+		b, _ := m.readByte(req.addr)
+		req.b <- b
+	}
+}
+
+func (m *Mmu) cmdWriteByteAt(resp interface{}) {
+	if req, ok := resp.(WriteByteAtReq); !ok {
+		panic("invalid command response type")
+	} else {
+		m.writeByte(req.addr, req.b)
+	}
+}
+
+// A MemoryDevice provides random 16bit read and write access.
+type MemoryDevice interface {
+	ReadByteAt(Worder) Byte
+	WriteByteAt(Worder, Byter)
+}
+
+// A MemoryHandlerRequest holds the info needed to map an address to a
+// MemoryDevice.
+type MemoryHandlerRequest struct {
+	start Word
+	end   Word
+	dev   MemoryDevice
+}
+
+type memoryHandler struct {
+	start Word
+	end   Word
+	dev   MemoryDevice
+}
+
+func (m *Mmu) selectMemoryDevice(addr Worder) (MemoryDevice, Word, error) {
+	a := addr.Word()
+	if 0 <= a && a < 0x0FF && !m.biosFinished {
+		return m.bios, a, nil
+	}
+	for _, mh := range m.handlers {
+		if mh.start <= a && a <= mh.end {
+			return mh.dev, mh.start, nil
+		}
+	}
+	u := "unknown"
+	if a == 0xFF00 {
+		u = "Register for reading joy pad info and determining system type. (R/W)"
+	} else if a == 0xFF01 {
+		u = "Serial transfer data (R/W)"
+	} else if a == 0xFF02 {
+		u = "SIO control (R/W)"
+	} else if a == 0xFF10 {
+		u = "Sound Mode 1 register, Sweep register (R/W)"
+	} else if a == 0xFF11 {
+		u = "Sound Mode 1 register, Sound length/Wave pattern duty (R/W)"
+	} else if a == 0xFF12 {
+		u = "Sound Mode 1 register, Envelope (R/W)"
+	} else if a == 0xFF13 {
+		u = "Sound Mode 1 register, Frequency lo (W)"
+	} else if a == 0xFF14 {
+		u = "Sound Mode 1 register, Frequency hi (R/W)"
+	} else if a == 0xFF17 {
+		u = "Sound Mode 2 register, envelope (R/W)"
+	} else if a == 0xFF19 {
+		u = "Sound Mode 2 register, frequency"
+	} else if a == 0xFF1A {
+		u = "Sound Mode 3 register, Sound on/off (R/W)"
+	} else if a == 0xFF21 {
+		u = "Sound Mode 4 register, envelope (R/W)"
+	} else if a == 0xFF23 {
+		u = "Sound Mode 4 register, counter/consecutive; inital (R/W)"
+	} else if a == 0xFF24 {
+		u = "Channel control / ON-OFF / Volume (R/W)"
+	} else if a == 0xFF25 {
+		u = "Selection of Sound output terminal (R/W)"
+	} else if a == 0xFF26 {
+		u = "Sound on/off (R/W)"
+	}
+	return nilModule{}, Word(0), fmt.Errorf("unhandled memory access: 0x%04X - %s", addr, u)
+}
+
+// A ReadByteAtReq holds the info needed to read a byte from a MemoryCommander.
+type ReadByteAtReq struct {
 	addr Word
-	data byte
+	b    chan Byte
 }
 
-type mmuRead struct {
+// ReadByteAt reads a single byte from the mmu at the specified address.
+func (m *Mmu) ReadByteAt(addr Worder) Byte {
+	req := ReadByteAtReq{addr.Word(), make(chan Byte)}
+	m.RunCommand(CmdReadByteAt, req)
+	return <-req.b
+}
+
+// A WriteByteAtReq holds the info needed to read a byte from a
+// MemoryCommander.
+type WriteByteAtReq struct {
 	addr Word
-	resp chan byte
+	b    Byte
 }
 
-type mmuCommand uint8
-
-const (
-	mmuCmdStop mmuCommand = iota
-	mmuCmdUnloadBios
-)
-
-type MmuConnection struct {
-	read  chan mmuRead
-	write chan mmuWrite
-	cmd   chan mmuCommand
-	resp  chan byte
+// WriteByteAt writes a single byte from the mmu at the specified address.
+func (m *Mmu) WriteByteAt(addr Worder, b Byter) {
+	req := WriteByteAtReq{addr.Word(), b.Byte()}
+	m.RunCommand(CmdWriteByteAt, req)
 }
 
-func (m *Mmu) Connect() MmuConnection {
-	c := MmuConnection{m.read, m.write, m.cmd, make(chan byte)}
-	return c
+func (m *Mmu) readByte(addr Worder) (Byte, error) {
+	md, addr, err := m.selectMemoryDevice(addr)
+	if err != nil {
+		for _, n := range m.notifyUnhandledMemory {
+			select {
+			case n <- err.Error():
+			default:
+			}
+		}
+	}
+	return md.ReadByteAt(addr), err
 }
 
-func (m MmuConnection) writeByte(addr Worder, b Byter) {
-	m.write <- mmuWrite{Word(addr.Uint16()), b.Uint8()}
+func (m *Mmu) writeByte(addr Worder, b Byte) error {
+	md, addr, err := m.selectMemoryDevice(addr)
+	md.WriteByteAt(addr, b)
+	if err != nil {
+		err = fmt.Errorf(fmt.Sprintf("%s - 0x%02X", err, b))
+		for _, n := range m.notifyUnhandledMemory {
+			select {
+			case n <- err.Error():
+			default:
+			}
+		}
+	}
+	return err
 }
 
-func (m MmuConnection) readByte(addr Worder) Byte {
-	m.read <- mmuRead{Word(addr.Uint16()), m.resp}
-	return Byte(<-m.resp)
+// A RomDevice is a basic rom MemoryDevice.
+type RomDevice struct {
+	data []Byte
+	addr Word
+	size Word
 }
 
-// write low bytes first
-func (m MmuConnection) writeWord(addr Worder, w Worder) {
-	m.writeByte(addr, w.Low())
-	m.writeByte(addr.Inc(), w.High())
+// NewRomDevice creates a RomDevice that handles from `addr` to `addr + size`.
+// The devices is initialized with `data` if provided.
+func NewRomDevice(addr Worder, size Worder, data []Byte) RomDevice {
+	d := make([]Byte, size.Word())
+	copy(d, data)
+	return RomDevice{d, addr.Word(), size.Word()}
 }
 
-func (m MmuConnection) readWord(addr Worder) Word {
-	l := m.readByte(addr)
-	h := m.readByte(addr.Inc())
-	return bytesToWord(h, l)
+// ReadByteAt reads a single byte from the device at the specified address.
+func (r RomDevice) ReadByteAt(addr Worder) Byte {
+	a := addr.Word() - r.addr
+	if a < 0 || a > r.size {
+		panic("rom read out of range")
+	}
+	return r.data[a]
 }
 
-func (m MmuConnection) unloadBios() {
-	m.cmd <- mmuCmdUnloadBios
+// WriteByteAt does nothing.
+func (r RomDevice) WriteByteAt(Worder, Byter) {}
+
+// A RamDevice is a basic ram MemoryDevice.
+type RamDevice struct {
+	data []Byte
+	addr Word
+	size Word
 }
+
+// NewRamDevice creates a RamDevice that handles from `addr` to `addr + size`.
+// The devices is initialized with `data` if provided.
+func NewRamDevice(addr Worder, size Worder, data []Byte) RamDevice {
+	d := make([]Byte, size.Word())
+	copy(d, data)
+	return RamDevice{d, addr.Word(), size.Word()}
+}
+
+// ReadByteAt reads a single byte from the device at the specified address.
+func (r RamDevice) ReadByteAt(addr Worder) Byte {
+	a := addr.Word() - r.addr
+	if a < 0 || a > r.size {
+		panic("ram read out of range")
+	}
+	return r.data[a]
+}
+
+// WriteByteAt writes a single byte from the device at the specified address.
+func (r RamDevice) WriteByteAt(addr Worder, b Byter) {
+	a := addr.Word() - r.addr
+	if a < 0 || a > r.size {
+		panic(fmt.Sprintf("ram write out of range 0x%04X 0x%02X %v", addr.Word(), b.Byte()))
+	}
+	r.data[a] = b.Byte()
+}
+
+// An EchoRamDevice is a ram MemoryDevice that can be accessed from two
+// seperate starting addresses.
+type EchoRamDevice struct {
+	data  []Byte
+	addrA Word
+	addrB Word
+	size  Word
+}
+
+// NewEchoRamDevice creates an EchoRamDevice that handles from `addr` to
+// `addr + size`. // The devices is initialized with `data` if provided.
+func NewEchoRamDevice(addrA, addrB Worder, size Worder, data []Byte) EchoRamDevice {
+	d := make([]Byte, size.Word())
+	copy(d, data)
+	return EchoRamDevice{d, addrA.Word(), addrB.Word(), size.Word()}
+}
+
+// ReadByteAt reads a single byte from the device at the specified address.
+func (r EchoRamDevice) ReadByteAt(addr Worder) Byte {
+	aa := addr.Word() - r.addrA
+	ab := addr.Word() - r.addrB
+	if aa < 0 || aa > r.size {
+		return r.data[aa]
+	} else if ab < 0 || ab > r.size {
+		return r.data[ab]
+	}
+	panic("ram read out of range")
+}
+
+// WriteByteAt writes a single byte from the device at the specified address.
+func (r EchoRamDevice) WriteByteAt(addr Worder, b Byter) {
+	aa := addr.Word() - r.addrA
+	ab := addr.Word() - r.addrB
+	if aa < 0 || aa > r.size {
+		r.data[aa] = b.Byte()
+	} else if ab < 0 || ab > r.size {
+		r.data[ab] = b.Byte()
+	}
+	panic("ram write out of range")
+}
+
+// function memory device
+type FunctionDevice struct {
+	fr func(Worder) Byte
+	fw func(Worder, Byter)
+}
+
+func NewFunctionDevice(fr func(Worder) Byte, fw func(Worder, Byter)) FunctionDevice {
+	return FunctionDevice{fr, fw}
+}
+
+func (f FunctionDevice) ReadByteAt(addr Worder) Byte {
+	return f.fr(addr)
+}
+
+func (f FunctionDevice) WriteByteAt(addr Worder, b Byter) {
+	f.fw(addr, b)
+}
+
+// nil memory device
+type nilModule struct{}
+
+func (n nilModule) ReadByteAt(Worder) Byte {
+	return Byte(0)
+}
+
+func (r nilModule) WriteByteAt(Worder, Byter) {}

@@ -8,9 +8,10 @@ import (
 )
 
 func main() {
-	doc := `usage: jibi [-s | --skipbios] <rom>
+	doc := `usage: jibi [options] <rom>
 options:
-  -s --skipbios  start running rom immediately`
+  --dev-norender  disable rendering
+  --dev-quick     run a quick test cycle`
 	args, _ := docopt.Parse(doc, nil, true, "", false)
 
 	rom, err := jibi.ReadRomFile(args["<rom>"].(string))
@@ -20,7 +21,8 @@ options:
 	}
 
 	options := jibi.Options{
-		Skipbios: args["--skipbios"].(bool),
+		Render: !args["--dev-norender"].(bool),
+		Quick:  args["--dev-quick"].(bool),
 	}
 	gameboy := jibi.New(rom, options)
 
