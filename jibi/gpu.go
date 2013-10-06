@@ -2,6 +2,8 @@ package jibi
 
 import ()
 
+// A Gpu is the graphics processing unit. It handles drawing the background,
+// window and sprites. It also triggers interrutps.
 type Gpu struct {
 	Commander
 
@@ -21,6 +23,7 @@ type Gpu struct {
 	lcdc Byte
 }
 
+// NewGpu creates a Gpu and starts a goroutine.
 func NewGpu(mmu MemoryCommander, irq *Irq, lcd Lcd, clk chan ClockType) *Gpu {
 	commander := NewCommander("gpu")
 	gpu := &Gpu{commander,
@@ -55,12 +58,14 @@ func (g *Gpu) cmdWriteByteAt(resp interface{}) {
 	}
 }
 
+// ReadByteAt reads a single byte from the gpu at the specified address.
 func (g *Gpu) ReadByteAt(addr Worder) Byte {
 	req := ReadByteAtReq{addr.Word(), make(chan Byte)}
 	g.RunCommand(CmdReadByteAt, req)
 	return <-req.b
 }
 
+// WriteByteAt writes a single byte to the gpu at the specified address.
 func (g *Gpu) WriteByteAt(addr Worder, b Byter) {
 	req := WriteByteAtReq{addr.Word(), b.Byte()}
 	g.RunCommand(CmdWriteByteAt, req)
@@ -254,7 +259,7 @@ func (g *Gpu) stateHblank(first bool, t uint32) (CommanderStateFn, bool, uint32,
 
 func (g *Gpu) stateVblank(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
 	if first {
-		g.irq.Interrupt(InterruptVblank)
+		g.irq.SetInterrupt(InterruptVblank)
 		g.lcd.Blank()
 		g.generateFrame()
 		panic("vblank")

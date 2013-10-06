@@ -9,24 +9,29 @@ const (
 	lcdHeight Byte = 144
 )
 
+// An Lcd is an interface the Gpu uses to communicate with the display.
 type Lcd interface {
 	DrawLine([]Byte)
 	Blank()
 	DisableRender()
 }
 
-type LcdAscii struct {
+// An LcdASCII outputs as ascii characters to the terminal.
+type LcdASCII struct {
 	dr         bool
 	prevLine   []Byte
 	lineIndex  uint8
-	prevLineId uint8
+	prevLineID uint8
 }
 
-func NewLcdAscii() *LcdAscii {
-	return &LcdAscii{}
+// NewLcdASCII returns an LcdASCII object.
+func NewLcdASCII() *LcdASCII {
+	return &LcdASCII{}
 }
 
-func (lcd *LcdAscii) DrawLine(bl []Byte) {
+// DrawLine draws the Byte Slice to the current line index, then advances the
+// index.
+func (lcd *LcdASCII) DrawLine(bl []Byte) {
 	// compress every two lines into 1
 	if lcd.lineIndex%2 == 1 {
 		for i := range bl {
@@ -71,28 +76,30 @@ func (lcd *LcdAscii) DrawLine(bl []Byte) {
 	}
 
 	if lcd.dr == false {
-		lineId := uint8(float64(lcd.lineIndex) * 120.0 / float64(lcdHeight))
-		if lcd.prevLineId != lineId || lineId == 0 {
+		lineID := uint8(float64(lcd.lineIndex) * 120.0 / float64(lcdHeight))
+		if lcd.prevLineID != lineID || lineID == 0 {
 			if lcd.lineIndex%2 == 0 {
 				fmt.Printf("\x1B[170D%s", ls)
 			} else {
 				fmt.Printf("\x1B[170D%s\n", ls)
 			}
 		}
-		lcd.prevLineId = lineId
+		lcd.prevLineID = lineID
 	}
 
 	lcd.prevLine = bl
 	lcd.lineIndex++
 }
 
-func (lcd *LcdAscii) Blank() {
+// Blank moves the cursor to the upper left.
+func (lcd *LcdASCII) Blank() {
 	if lcd.dr == false {
 		fmt.Print("\x1B[0;0H")
 	}
 	lcd.lineIndex = 0
 }
 
-func (lcd *LcdAscii) DisableRender() {
+// DisableRender turns off rendering of lines. Only use while Paused.
+func (lcd *LcdASCII) DisableRender() {
 	lcd.dr = true
 }

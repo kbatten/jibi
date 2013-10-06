@@ -4,6 +4,8 @@ import (
 	"fmt"
 )
 
+// A Cartridge holds the game rom as well as information about the rom
+// capabilities.
 type Cartridge struct {
 	rom MemoryDevice
 
@@ -16,6 +18,7 @@ type Cartridge struct {
 	ramSize cartridgeRamSize
 }
 
+// NewCartridge reads and parses a rom and returns a new cartridge object.
 func NewCartridge(mmu MemoryCommander, rom []Byte) *Cartridge {
 	name := ""
 	for _, c := range rom[0x0134 : 0x0142+1] {

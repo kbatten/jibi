@@ -15,8 +15,10 @@ import (
 // select 0x5C \
 // start  0x0A <enter>
 
+// A Key is one of the 8 buttons.
 type Key uint8
 
+// List of 8 buttons.
 const (
 	KeyUp Key = iota
 	KeyDown
@@ -55,6 +57,7 @@ type valueChan struct {
 	c chan bool
 }
 
+// A Keypad manages reading the actual key input, and the button states.
 type Keypad struct {
 	Commander
 
@@ -72,6 +75,7 @@ func setupInput() {
 	exec.Command("stty", "-F", "/dev/tty", "-echo").Run()
 }
 
+// NewKeypad returns a new Keypad object and starts up a goroutine.
 func NewKeypad(mmu MemoryCommander, skipSetup bool) *Keypad {
 	if !skipSetup {
 		setupInput()
@@ -165,7 +169,7 @@ func (k *Keypad) cmdKeyUp(data interface{}) {
 }
 
 func loopKeyboard(kp *Keypad) {
-	var b []byte = make([]byte, 1)
+	b := make([]byte, 1)
 	for {
 		os.Stdin.Read(b)
 		switch b[0] {

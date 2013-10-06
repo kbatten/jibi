@@ -5,6 +5,9 @@ import (
 	"time"
 )
 
+// A Cpu is the central proecessing unit. This one is similar to a z80. Its
+// purpose is to handle interrupts, fetch and execute instructions, and
+// manage the clock.
 type Cpu struct {
 	Commander
 
@@ -44,6 +47,7 @@ type Cpu struct {
 	period time.Duration
 }
 
+// NewCpu creates a new Cpu with mmu and irq connections.
 func NewCpu(mmu MemoryCommander, irq *Irq) *Cpu {
 	// use internal clock
 	// 1 machine cycle = 4 clock cycles
@@ -115,12 +119,14 @@ func (c *Cpu) String() string {
 	return <-resp
 }
 
+// ReadByteAt reads a single byte from the cpu at the specified address.
 func (c *Cpu) ReadByteAt(addr Worder) Byte {
 	req := ReadByteAtReq{addr.Word(), make(chan Byte)}
 	c.RunCommand(CmdReadByteAt, req)
 	return <-req.b
 }
 
+// WriteByteAt writes a single byte to the cpu at the specified address.
 func (c *Cpu) WriteByteAt(addr Worder, b Byter) {
 	req := WriteByteAtReq{addr.Word(), b.Byte()}
 	c.RunCommand(CmdWriteByteAt, req)
@@ -154,11 +160,13 @@ func (c *Cpu) writeWord(addr Worder, w Worder) {
 	c.writeByte(addr.Word()+1, w.High())
 }
 
+// A ClockType is simply the type used for all clocks
+type ClockType uint32
+
 // a clock sends number of clock cycle since last successful send
 // so if a non-blocking send fails, the cycles accumulate
 // on successful send the cycles is reset
 // sends happen on machine cycle end
-type ClockType uint32
 type clock struct {
 	v ClockType
 	c chan ClockType
@@ -183,6 +191,7 @@ func (c *clock) addCycles(cycles uint8) {
 	}
 }
 
+// Clock returns a new channel that holds acumulating clock ticks.
 func (c *Cpu) Clock() chan ClockType {
 	resp := make(chan chan ClockType)
 	c.RunCommand(CmdClock, resp)

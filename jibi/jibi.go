@@ -5,12 +5,14 @@ import (
 	"time"
 )
 
+// Options holds various options.
 type Options struct {
 	Skipbios bool
 	Render   bool
 	Quick    bool
 }
 
+// Jibi is the glue that holds everything together.
 type Jibi struct {
 	O Options
 
@@ -23,11 +25,12 @@ type Jibi struct {
 	kp   *Keypad
 }
 
+// New returns a new Jibi in a Paused state.
 func New(rom []Byte, options Options) Jibi {
 	mmu := NewMmu(bios)
 	irq := NewIrq(mmu)
 	cpu := NewCpu(mmu, irq)
-	lcd := NewLcdAscii()
+	lcd := NewLcdASCII()
 	gpu := NewGpu(mmu, irq, lcd, cpu.Clock())
 	cart := NewCartridge(mmu, rom)
 	kp := NewKeypad(mmu, options.Quick)
@@ -42,6 +45,7 @@ func New(rom []Byte, options Options) Jibi {
 	return Jibi{options, mmu, cpu, irq, lcd, gpu, cart, kp}
 }
 
+// RunCommand displatches a command to the correct piece.
 func (j Jibi) RunCommand(cmd Command, resp chan string) {
 	if cmd < cmdMMU {
 		j.mmu.RunCommand(cmd, resp)
@@ -62,6 +66,7 @@ func (j Jibi) RunCommand(cmd Command, resp chan string) {
 	}
 }
 
+// Run starts the Jibi and waits till it ends before returning.
 func (j Jibi) Run() {
 	//resp := make(chan string)
 	//j.RunCommand(CmdNotifyInstruction, resp)
@@ -103,14 +108,17 @@ func (j Jibi) Run() {
 	j.Stop()
 }
 
+// Play starts the Jibi and returns immediately.
 func (j Jibi) Play() {
 	j.RunCommand(CmdPlay, nil)
 }
 
+// Pause pauses the Jibi and returns immediately.
 func (j Jibi) Pause() {
 	j.RunCommand(CmdPause, nil)
 }
 
+// Stop stops the Jibi and all its goroutines and returns immediately.
 func (j Jibi) Stop() {
 	j.RunCommand(CmdStop, nil)
 }

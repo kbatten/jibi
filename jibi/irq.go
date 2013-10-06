@@ -1,15 +1,20 @@
 package jibi
 
+// An Irq is an interrupt request handler. It provides helper functions for
+// dealing with interrutps.
 type Irq struct {
-	mmu *Mmu
+	mmu MemoryDevice
 }
 
-func NewIrq(mmu *Mmu) *Irq {
+// NewIrq returns a new Irq object.
+func NewIrq(mmu MemoryDevice) *Irq {
 	return &Irq{mmu}
 }
 
+// An Interrupt is what it is.
 type Interrupt uint8
 
+// A list of all five interrupts.
 const (
 	InterruptVblank Interrupt = 0x01 << iota
 	InterruptLCDC
@@ -18,10 +23,7 @@ const (
 	InterruptKeypad
 )
 
-func (i Interrupt) Uint8() uint8 {
-	return uint8(i)
-}
-
+// Address returns the restart address associated with the interrupt.
 func (i Interrupt) Address() Word {
 	switch i {
 	case InterruptVblank:
@@ -56,7 +58,14 @@ func (i Interrupt) String() string {
 	}
 }
 
-func (irq *Irq) Interrupt(in Interrupt) {
+// SetInterrupt triggers the specific interrupt if that interrupt is enabled.
+// TODO: figure out what to do with ime here.
+func (irq *Irq) SetInterrupt(in Interrupt) {
+	iereg := irq.mmu.ReadByteAt(AddrInterruptEnable)
+	iflag := irq.mmu.ReadByteAt(AddrIF) | Byte(in)
+	if iereg&Byte(in) == Byte(in) {
+		irq.mmu.WriteByteAt(AddrIF, iflag)
+	}
 }
 
 // GetInterrupt returns the highest priority enabled interrupt.
@@ -78,6 +87,7 @@ func (irq *Irq) GetInterrupt() Interrupt {
 	return 0
 }
 
+// ResetInterrupt resets the specific interrupt.
 func (irq *Irq) ResetInterrupt(i Interrupt) {
 	iflag := irq.mmu.ReadByteAt(AddrIF)
 	iflag &= (Byte(i) ^ 0xFF)

@@ -4,8 +4,10 @@ import (
 	"fmt"
 )
 
+// A Command is any command the is read by a Commander
 type Command int
 
+// A list of all commands and command indicators.
 const (
 	CmdNil Command = iota
 
@@ -96,32 +98,41 @@ func (c Command) String() string {
 	return "CmdUNKNOWN"
 }
 
+// A CommandResponse holds a command and response data (usually a channel).
 type CommandResponse struct {
 	cmd  Command
 	resp interface{}
 }
 
+// A CommanderStateFn is a chained state function that returns the next state.
 type CommanderStateFn func(bool, uint32) (CommanderStateFn, bool, uint32, uint32)
 
+// A CommanderInterface is an interface that lists what a Commander implements
+// so it can be used as an emebedded type.
 type CommanderInterface interface {
 	RunCommand(Command, interface{})
 	Start(CommanderStateFn, map[Command]CommandFn, chan uint8)
 }
 
+// A Commander handles an event loop in a goroutine that processes and
+// dispatches commands.
 type Commander struct {
 	name string
 	c    chan CommandResponse
 }
 
+// NewCommander returns a new named Commander object.
 func NewCommander(name string) Commander {
 	c := Commander{name, make(chan CommandResponse)}
 	return c
 }
 
+// Start creates the goroutine.
 func (c Commander) Start(state CommanderStateFn, handlerFns map[Command]CommandFn, clk chan uint8) {
 	go loopCommander(c, state, handlerFns, clk)
 }
 
+// RunCommand queues the given command for processing.
 func (c Commander) RunCommand(cmd Command, resp interface{}) {
 	c.c <- CommandResponse{cmd, resp}
 }
@@ -130,12 +141,15 @@ func (c Commander) String() string {
 	return c.name
 }
 
+// A MemoryCommander is the generic interface for something that is both a
+// MemoryDevice and a Commander embedded interface.
 type MemoryCommander interface {
 	ReadByteAt(Worder) Byte
 	WriteByteAt(Worder, Byter)
 	CommanderInterface
 }
 
+// A CommandFn is a map from the Command to the handler function.
 type CommandFn func(interface{})
 
 func loopCommander(c Commander, state CommanderStateFn, handlerFns map[Command]CommandFn, clk chan uint8) {

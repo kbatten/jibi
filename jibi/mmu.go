@@ -4,7 +4,7 @@ import (
 	"fmt"
 )
 
-// Mmu is the memory management unit. The purpose is to dispatch read and
+// An Mmu is the memory management unit. Its purpose is to dispatch read and
 // write requeststo the appropriate module (cpu, gpu, etc) based on the memory
 // address.
 type Mmu struct {
@@ -163,7 +163,7 @@ type WriteByteAtReq struct {
 	b    Byte
 }
 
-// WriteByteAt writes a single byte from the mmu at the specified address.
+// WriteByteAt writes a single byte to the mmu at the specified address.
 func (m *Mmu) WriteByteAt(addr Worder, b Byter) {
 	req := WriteByteAtReq{addr.Word(), b.Byte()}
 	m.RunCommand(CmdWriteByteAt, req)
@@ -248,7 +248,7 @@ func (r RamDevice) ReadByteAt(addr Worder) Byte {
 	return r.data[a]
 }
 
-// WriteByteAt writes a single byte from the device at the specified address.
+// WriteByteAt writes a single byte to the device at the specified address.
 func (r RamDevice) WriteByteAt(addr Worder, b Byter) {
 	a := addr.Word() - r.addr
 	if a < 0 || a > r.size {
@@ -267,7 +267,7 @@ type EchoRamDevice struct {
 }
 
 // NewEchoRamDevice creates an EchoRamDevice that handles from `addr` to
-// `addr + size`. // The devices is initialized with `data` if provided.
+// `addr + size`. The devices is initialized with `data` if provided.
 func NewEchoRamDevice(addrA, addrB Worder, size Worder, data []Byte) EchoRamDevice {
 	d := make([]Byte, size.Word())
 	copy(d, data)
@@ -286,7 +286,7 @@ func (r EchoRamDevice) ReadByteAt(addr Worder) Byte {
 	panic("ram read out of range")
 }
 
-// WriteByteAt writes a single byte from the device at the specified address.
+// WriteByteAt writes a single byte to the device at the specified address.
 func (r EchoRamDevice) WriteByteAt(addr Worder, b Byter) {
 	aa := addr.Word() - r.addrA
 	ab := addr.Word() - r.addrB
@@ -298,20 +298,25 @@ func (r EchoRamDevice) WriteByteAt(addr Worder, b Byter) {
 	panic("ram write out of range")
 }
 
-// function memory device
+// A FunctionDevice is a MemoryDevice that maps custom read and write
+// functions.
 type FunctionDevice struct {
 	fr func(Worder) Byte
 	fw func(Worder, Byter)
 }
 
+// NewFunctionDevice creates a FunctionDevice that handles from `addr` to
+// `addr + size`.
 func NewFunctionDevice(fr func(Worder) Byte, fw func(Worder, Byter)) FunctionDevice {
 	return FunctionDevice{fr, fw}
 }
 
+// ReadByteAt reads a single byte from the device at the specified address.
 func (f FunctionDevice) ReadByteAt(addr Worder) Byte {
 	return f.fr(addr)
 }
 
+// WriteByteAt writes a single byte to the device at the specified address.
 func (f FunctionDevice) WriteByteAt(addr Worder, b Byter) {
 	f.fw(addr, b)
 }
@@ -323,4 +328,4 @@ func (n nilModule) ReadByteAt(Worder) Byte {
 	return Byte(0)
 }
 
-func (r nilModule) WriteByteAt(Worder, Byter) {}
+func (n nilModule) WriteByteAt(Worder, Byter) {}

@@ -1,5 +1,6 @@
 package jibi
 
+// A list of all the special memory addresses.
 const (
 	AddrIF              Word = 0xFF0F
 	AddrLCDC            Word = 0xFF40
