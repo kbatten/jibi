@@ -1,15 +1,6 @@
 package jibi
 
-// An Irq is an interrupt request handler. It provides helper functions for
-// dealing with interrutps.
-type Irq struct {
-	mmu MemoryDevice
-}
-
-// NewIrq returns a new Irq object.
-func NewIrq(mmu MemoryDevice) *Irq {
-	return &Irq{mmu}
-}
+import ()
 
 // An Interrupt is what it is.
 type Interrupt uint8
@@ -58,21 +49,26 @@ func (i Interrupt) String() string {
 	}
 }
 
-// SetInterrupt triggers the specific interrupt if that interrupt is enabled.
-// TODO: figure out what to do with ime here.
-func (irq *Irq) SetInterrupt(in Interrupt) {
-	iereg := irq.mmu.ReadByteAt(AddrInterruptEnable)
-	iflag := irq.mmu.ReadByteAt(AddrIF) | Byte(in)
-	if iereg&Byte(in) == Byte(in) {
-		irq.mmu.WriteByteAt(AddrIF, iflag)
+func (cpu *Cpu) cmdSetInterrupt(resp interface{}) {
+	if in, ok := resp.(Interrupt); !ok {
+		panic("invalid command response type")
+	} else {
+		cpu.setInterrupt(in)
 	}
 }
 
-// GetInterrupt returns the highest priority enabled interrupt.
-func (irq *Irq) GetInterrupt() Interrupt {
-	// TODO: handle these memory addresses locally
-	iereg := irq.mmu.ReadByteAt(AddrInterruptEnable)
-	iflag := irq.mmu.ReadByteAt(AddrIF)
+func (cpu *Cpu) setInterrupt(in Interrupt) {
+	if cpu.ime == 1 {
+		if cpu.ie&Byte(in) == Byte(in) {
+			cpu.iflags |= Byte(in)
+		}
+	}
+}
+
+// getInterrupt returns the highest priority enabled interrupt.
+func (cpu *Cpu) getInterrupt() Interrupt {
+	iereg := cpu.ie
+	iflag := cpu.iflags
 	if Byte(InterruptVblank)&iereg&iflag != 0 {
 		return InterruptVblank
 	} else if Byte(InterruptLCDC)&iereg&iflag != 0 {
@@ -87,9 +83,9 @@ func (irq *Irq) GetInterrupt() Interrupt {
 	return 0
 }
 
-// ResetInterrupt resets the specific interrupt.
-func (irq *Irq) ResetInterrupt(i Interrupt) {
-	iflag := irq.mmu.ReadByteAt(AddrIF)
+// resetInterrupt resets the specific interrupt.
+func (cpu *Cpu) resetInterrupt(i Interrupt) {
+	iflag := cpu.readByte(AddrIF)
 	iflag &= (Byte(i) ^ 0xFF)
-	irq.mmu.WriteByteAt(AddrIF, iflag)
+	cpu.writeByte(AddrIF, iflag)
 }

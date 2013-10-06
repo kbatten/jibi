@@ -13,18 +13,18 @@ const (
 
 	CmdHandleMemory
 	CmdUnloadBios
-	CmdNotifyUnhandledMemory
 	cmdMMU
 
-	CmdClock
-	CmdNotifyInstruction
+	CmdSetInterrupt
+	CmdClockAccumulator // accumulating clock
+	CmdOnInstruction    // blocking clock channel that ticks after every instruction
 	cmdCPU
 
 	cmdIRQ
 
 	cmdLCD
 
-	CmdNotifyFrame
+	CmdFrameCounter
 	cmdGPU
 
 	cmdCART
@@ -33,6 +33,8 @@ const (
 	CmdKeyUp
 	cmdKEYPAD
 
+	CmdCmdCounter  // a clock that outputs number of commands processed
+	CmdLoopCounter // a clock that outputs number of loops run
 	CmdReadByteAt
 	CmdWriteByteAt
 	CmdString
@@ -52,22 +54,20 @@ func (c Command) String() string {
 		return "CmdHandleMemory"
 	case CmdUnloadBios:
 		return "CmdUnloadBios"
-	case CmdNotifyUnhandledMemory:
-		return "CmdNotifyUnhandledMemory"
 	case cmdMMU:
 		return "cmdMMU"
-	case CmdClock:
-		return "CmdClock"
-	case CmdNotifyInstruction:
-		return "CmdNotifyInstruction"
+	case CmdClockAccumulator:
+		return "CmdClockAccumulator"
+	case CmdOnInstruction:
+		return "CmdOnInstruction"
 	case cmdCPU:
 		return "cmdCPU"
 	case cmdIRQ:
 		return "cmdIRQ"
 	case cmdLCD:
 		return "cmdLCD"
-	case CmdNotifyFrame:
-		return "CmdNotifyFrame"
+	case CmdFrameCounter:
+		return "CmdFrameCounter"
 	case cmdGPU:
 		return "cmdGPU"
 	case cmdCART:
@@ -78,6 +78,10 @@ func (c Command) String() string {
 		return "CmdKeyUp"
 	case cmdKEYPAD:
 		return "cmdKEYPAD"
+	case CmdCmdCounter:
+		return "CmdCmdCounter"
+	case CmdLoopCounter:
+		return "CmdLoopCounter"
 	case CmdReadByteAt:
 		return "CmdReadByteAt"
 	case CmdWriteByteAt:
@@ -95,7 +99,7 @@ func (c Command) String() string {
 	case cmdCPUGPU:
 		return "cmdCPUGPU"
 	}
-	return "CmdUNKNOWN"
+	return fmt.Sprintf("CmdUNKNOWN-%d", int(c))
 }
 
 // A CommandResponse holds a command and response data (usually a channel).
@@ -111,33 +115,50 @@ type CommanderStateFn func(bool, uint32) (CommanderStateFn, bool, uint32, uint32
 // so it can be used as an emebedded type.
 type CommanderInterface interface {
 	RunCommand(Command, interface{})
-	Start(CommanderStateFn, map[Command]CommandFn, chan uint8)
+	start(CommanderStateFn, map[Command]CommandFn, chan ClockType)
+	yield()
+	play()
+	pause()
 }
 
 // A Commander handles an event loop in a goroutine that processes and
 // dispatches commands.
 type Commander struct {
-	name string
-	c    chan CommandResponse
+	name         string
+	c            chan CommandResponse
+	cmdCounters  []*Clock
+	loopCounters []*Clock
+	playing      bool
+	running      bool
+	handlerFns   map[Command]CommandFn
 }
 
 // NewCommander returns a new named Commander object.
-func NewCommander(name string) Commander {
-	c := Commander{name, make(chan CommandResponse)}
+func NewCommander(name string) *Commander {
+	c := &Commander{name, make(chan CommandResponse),
+		nil, nil, false, false, nil,
+	}
 	return c
 }
 
-// Start creates the goroutine.
-func (c Commander) Start(state CommanderStateFn, handlerFns map[Command]CommandFn, clk chan uint8) {
-	go loopCommander(c, state, handlerFns, clk)
+// start creates the goroutine.
+func (c *Commander) start(state CommanderStateFn, handlerFns map[Command]CommandFn, clk chan ClockType) {
+	c.handlerFns = handlerFns
+	go c.loopCommander(state, clk)
+}
+
+// yield gives the commander an opportunity to process any pending commands
+// TODO: verify that there is 0 change of deadlock after a yield
+func (c *Commander) yield() {
+	c.processCommands()
 }
 
 // RunCommand queues the given command for processing.
-func (c Commander) RunCommand(cmd Command, resp interface{}) {
+func (c *Commander) RunCommand(cmd Command, resp interface{}) {
 	c.c <- CommandResponse{cmd, resp}
 }
 
-func (c Commander) String() string {
+func (c *Commander) String() string {
 	return c.name
 }
 
@@ -152,58 +173,119 @@ type MemoryCommander interface {
 // A CommandFn is a map from the Command to the handler function.
 type CommandFn func(interface{})
 
-func loopCommander(c Commander, state CommanderStateFn, handlerFns map[Command]CommandFn, clk chan uint8) {
-	playing := false
+func nilFunc(a int) int {
+	return a + a
+}
+
+func (c *Commander) loopCommander(state CommanderStateFn, clk chan ClockType) {
+	c.playing = false
+	c.running = true
 	first := true
 	t := uint32(0)
 	tnext := uint32(0) // time needed to run next state
-	for running := true; running; {
-		var cmdr CommandResponse
-		if !playing || state == nil {
-			//if c.String() != "mmu" { fmt.Println("A", c) }
+	var cmdr CommandResponse
+	to := ClockType(0)
+	for c.running {
+		cmdr.cmd = CmdNil
+		for _, clk := range c.loopCounters {
+			clk.AddCycles(1)
+		}
+		if !c.playing || state == nil {
 			cmdr = <-c.c
-			//if c.String() != "mmu" {fmt.Println("A", c, cmdr.cmd) }
-		} else if t <= tnext {
+			c.processCommand(cmdr)
+		} else if t >= tnext {
 			// we have enough cycles to run the next state without waiting for the clock
 			select {
 			case cmdr = <-c.c:
 			default:
 			}
+			c.processCommand(cmdr)
 		} else if t < tnext {
 			if clk == nil {
 				panic(fmt.Sprintf("Commander %s requires a clock", c))
 			}
 			select {
 			case cmdr = <-c.c:
-			case to := <-clk:
-				t += (uint32(to))
+			case to = <-clk:
+				t += uint32(to)
 			}
+			c.processCommand(cmdr)
 		}
-		if cmdr.cmd != CmdNil {
-			if cmdr.cmd == CmdPlay {
-				playing = true
-			} else if cmdr.cmd == CmdPause {
-				playing = false
-			} else {
-				if _, ok := handlerFns[cmdr.cmd]; !ok {
-					if cmdr.cmd != CmdStop {
-						panic(fmt.Sprintf("Commander %s requires handler for %s", c, cmdr.cmd))
-					}
-				} else {
-					handlerFns[cmdr.cmd](cmdr.resp)
-				}
-				if cmdr.cmd == CmdStop {
-					running = false
-					playing = false
-				}
-			}
+		if state != nil && c.playing && (t >= tnext || first) {
+			state, first, t, tnext = state(first, t)
+		} else if !c.playing {
+			t = 0
+		}
+	}
+}
+
+func (c *Commander) processCommands() {
+	var cmdr CommandResponse
+
+	for loop := true; loop; {
+		cmdr.cmd = CmdNil
+		select {
+		case cmdr = <-c.c:
+		default:
+			loop = false
+		}
+		c.processCommand(cmdr)
+	}
+}
+
+func (c *Commander) processCommand(cmdr CommandResponse) {
+	if cmdr.cmd != CmdNil {
+		for _, clk := range c.cmdCounters {
+			clk.AddCycles(1)
+		}
+		if cmdr.cmd == CmdPlay {
+			c.playing = true
+		} else if cmdr.cmd == CmdPause {
+			c.playing = false
+		} else if cmdr.cmd == CmdCmdCounter {
+			c.cmdCmdCounter(cmdr.resp)
+		} else if cmdr.cmd == CmdLoopCounter {
+			c.cmdLoopCounter(cmdr.resp)
 		} else {
-			// consume all commands before running next state
-			if state != nil && playing && (tnext >= t || first) {
-				state, first, t, tnext = state(first, t)
-			} else if !playing {
-				t = 0
+			if _, ok := c.handlerFns[cmdr.cmd]; !ok {
+				if cmdr.cmd != CmdStop {
+					panic(fmt.Sprintf("Commander %s requires handler for %s", c, cmdr.cmd))
+				}
+			} else {
+				c.handlerFns[cmdr.cmd](cmdr.resp)
+			}
+			if cmdr.cmd == CmdStop {
+				c.running = false
+				c.playing = false
 			}
 		}
 	}
+}
+
+func (c *Commander) cmdCmdCounter(resp interface{}) {
+	if resp, ok := resp.(chan chan ClockType); !ok {
+		panic("invalid command response type")
+	} else {
+		clk := make(chan ClockType, 1)
+		c.cmdCounters = append(c.cmdCounters, NewClock(clk))
+		resp <- clk
+	}
+}
+
+func (c *Commander) cmdLoopCounter(resp interface{}) {
+	if resp, ok := resp.(chan chan ClockType); !ok {
+		panic("invalid command response type")
+	} else {
+		clk := make(chan ClockType, 1)
+		c.loopCounters = append(c.loopCounters, NewClock(clk))
+		resp <- clk
+	}
+}
+
+func (c *Commander) play() {
+	c.playing = true
+}
+
+func (c *Commander) pause() {
+	c.playing = false
 }

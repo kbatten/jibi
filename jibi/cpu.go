@@ -9,7 +9,7 @@ import (
 // purpose is to handle interrupts, fetch and execute instructions, and
 // manage the clock.
 type Cpu struct {
-	Commander
+	CommanderInterface
 
 	// registers
 	a  register8
@@ -24,7 +24,7 @@ type Cpu struct {
 	pc register16
 
 	// clocks
-	tClocks []*clock // t clock cycle exported clocks
+	tClocks []*Clock // t clock cycle exported clocks
 	m       uint8    // machine cycles
 	t       uint8    // clock cycles
 
@@ -35,9 +35,10 @@ type Cpu struct {
 	ime Bit
 
 	mmu MemoryCommander
-	irq *Irq
 
-	zero MemoryDevice
+	zero   MemoryDevice
+	iflags Byte
+	ie     Byte
 
 	// internal state
 	biosFinished bool
@@ -47,8 +48,8 @@ type Cpu struct {
 	period time.Duration
 }
 
-// NewCpu creates a new Cpu with mmu and irq connections.
-func NewCpu(mmu MemoryCommander, irq *Irq) *Cpu {
+// NewCpu creates a new Cpu with mmu connection.
+func NewCpu(mmu MemoryCommander) *Cpu {
 	// use internal clock
 	// 1 machine cycle = 4 clock cycles
 	// machine cycles: 1.05MHz nop: 1 cycle
@@ -67,21 +68,26 @@ func NewCpu(mmu MemoryCommander, irq *Irq) *Cpu {
 
 	commander := NewCommander("cpu")
 
-	cpu := &Cpu{Commander: commander,
+	cpu := &Cpu{CommanderInterface: commander,
 		a: a, b: b, c: c, d: d, e: e, f: f, l: l, h: h,
-		ime: Bit(1),
-		mmu: mmu, irq: irq,
-		zero: NewRamDevice(Word(0xFF80), Word(0x7F), nil),
-		hz:   hz, period: period,
+		ime:    Bit(1),
+		mmu:    mmu,
+		zero:   NewRamDevice(Word(0xFF80), Word(0x7F), nil),
+		iflags: Byte(0),
+		ie:     Byte(0),
+		hz:     hz, period: period,
 	}
 	cmdHandlers := map[Command]CommandFn{
-		CmdClock:  cpu.cmdClock,
-		CmdString: cpu.cmdString,
+		CmdClockAccumulator: cpu.cmdClock,
+		CmdString:           cpu.cmdString,
+		CmdSetInterrupt:     cpu.cmdSetInterrupt,
+		CmdOnInstruction:    cpu.cmdOnInstruction,
 	}
-	commander.Start(cpu.step, cmdHandlers, nil)
 
-	handler := MemoryHandlerRequest{0xFF80, 0xFFFE, cpu}
-	mmu.RunCommand(CmdHandleMemory, handler)
+	commander.start(cpu.step, cmdHandlers, nil)
+	mmu.RunCommand(CmdHandleMemory, MemoryHandlerRequest{0xFF80, 0xFFFE, cpu})
+	mmu.RunCommand(CmdHandleMemory, MemoryHandlerRequest{AddrIE, AddrIE, cpu})
+	mmu.RunCommand(CmdHandleMemory, MemoryHandlerRequest{AddrIF, AddrIF, cpu})
 	return cpu
 }
 
@@ -90,7 +96,17 @@ func (c *Cpu) cmdClock(resp interface{}) {
 		panic("invalid command response type")
 	} else {
 		clk := make(chan ClockType, 1)
-		c.tClocks = append(c.tClocks, newClock(clk))
+		c.tClocks = append(c.tClocks, NewClock(clk))
+		resp <- clk
+	}
+}
+
+func (c *Cpu) cmdOnInstruction(resp interface{}) {
+	if resp, ok := resp.(chan chan ClockType); !ok {
+		panic("invalid command response type")
+	} else {
+		clk := make(chan ClockType)
+		c.tClocks = append(c.tClocks, NewClock(clk))
 		resp <- clk
 	}
 }
@@ -109,7 +125,7 @@ a:%s b:%s c:%s d:%s e:%s f:%s h:%s l:%s
 af:0x%04X bc:0x%04X de:0x%04X hl:0x%04X sp:%s pc:%s
 %s`,
 		c.inst, c.a, c.b, c.c, c.d, c.e, c.f, c.h, c.l,
-		c.a.Byte(), c.b.Byte(), c.d.Byte(), c.h.Byte(), c.sp, c.pc,
+		c.a.Word(), c.b.Word(), c.d.Word(), c.h.Word(), c.sp, c.pc,
 		c.f.flagsString())
 }
 
@@ -136,7 +152,14 @@ func (c *Cpu) readByte(addr Worder) Byte {
 	a := addr.Word()
 	if 0xFF80 <= a && a <= 0xFFFE {
 		return c.zero.ReadByteAt(addr)
+	} else if AddrIF == a {
+		panic("IF")
+		return c.iflags
+	} else if AddrIE == a {
+		panic("IE")
+		return c.ie
 	}
+	c.yield()
 	return c.mmu.ReadByteAt(a)
 }
 
@@ -144,7 +167,14 @@ func (c *Cpu) writeByte(addr Worder, b Byter) {
 	a := addr.Word()
 	if 0xFF80 <= a && a <= 0xFFFE {
 		c.zero.WriteByteAt(addr, b)
+	} else if AddrIF == a {
+		panic("IF")
+		c.iflags = b.Byte()
+	} else if AddrIE == a {
+		panic("IE")
+		c.ie = b.Byte()
 	} else {
+		c.yield()
 		c.mmu.WriteByteAt(addr, b)
 	}
 }
@@ -160,41 +190,10 @@ func (c *Cpu) writeWord(addr Worder, w Worder) {
 	c.writeByte(addr.Word()+1, w.High())
 }
 
-// A ClockType is simply the type used for all clocks
-type ClockType uint32
-
-// a clock sends number of clock cycle since last successful send
-// so if a non-blocking send fails, the cycles accumulate
-// on successful send the cycles is reset
-// sends happen on machine cycle end
-type clock struct {
-	v ClockType
-	c chan ClockType
-}
-
-func newClock(c chan ClockType) *clock {
-	return &clock{ClockType(0), c}
-}
-
-func (c *clock) addCycles(cycles uint8) {
-	c.v += ClockType(cycles)
-	//v := uint8(c.v)
-	//if c.v > 255 {
-	//	v = 255
-	//}
-
-	select {
-	case c.c <- c.v:
-		//c.v -= ClockType(v)
-		c.v = 0
-	default:
-	}
-}
-
 // Clock returns a new channel that holds acumulating clock ticks.
 func (c *Cpu) Clock() chan ClockType {
 	resp := make(chan chan ClockType)
-	c.RunCommand(CmdClock, resp)
+	c.RunCommand(CmdClockAccumulator, resp)
 	return <-resp
 }
 
@@ -206,12 +205,12 @@ func (c *Cpu) fetch() {
 		c.pc++
 	}
 	command := commandTable[op]
-	c.inst = newInstruction(op)
-
+	p := []Byte{}
 	for i := uint8(0); i < command.b; i++ {
-		c.inst.p = append(c.inst.p, c.readByte(c.pc))
+		p = append(p, c.readByte(c.pc))
 		c.pc++
 	}
+	c.inst = newInstruction(op, p...)
 }
 
 func (c *Cpu) execute() {
@@ -228,12 +227,12 @@ func (c *Cpu) execute() {
 
 func (c *Cpu) interrupt() {
 	if c.ime == 1 {
-		c.ime = 0
-		in := c.irq.GetInterrupt()
+		in := c.getInterrupt()
 		if in > 0 {
+			c.ime = 0
 			c.push(c.pc)
 			c.jp(in.Address())
-			c.irq.ResetInterrupt(in)
+			c.resetInterrupt(in)
 		}
 	}
 }
@@ -247,8 +246,7 @@ func (c *Cpu) step(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32
 	c.execute()   // execute c.inst instruction
 
 	for _, clk := range c.tClocks {
-		clk.addCycles(c.t)
+		clk.AddCycles(c.t)
 	}
-
 	return c.step, false, 0, 0
 }

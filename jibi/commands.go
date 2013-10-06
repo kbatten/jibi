@@ -29,13 +29,16 @@ func (o opcode) String() string {
 var commandTable = map[opcode]command{
 	0x00: command{"NOP", 0, 4, func(*Cpu) {}},
 	0x01: command{"LD BC, nn", 2, 12, func(c *Cpu) {
+		panic("inst")
 		c.c.set(c.inst.p[0])
 		c.b.set(c.inst.p[1])
 	}},
 	0x02: command{"LD (BC), A", 0, 8, func(c *Cpu) {
+		panic("inst")
 		c.writeByte(c.b, c.a)
 	}},
 	0x03: command{"INC BC", 0, 8, func(c *Cpu) {
+		panic("inst")
 		c.b.setWord(c.b.Word() + 1)
 	}},
 	0x04: command{"INC B", 0, 4, func(c *Cpu) {
@@ -47,7 +50,8 @@ var commandTable = map[opcode]command{
 	0x06: command{"LD B, #", 1, 8, func(c *Cpu) {
 		c.b.set(c.inst.p[0])
 	}},
-	0x07: command{"RLCA", 4, 0, func(c *Cpu) {
+	0x07: command{"RLCA", 0, 4, func(c *Cpu) {
+		panic("inst")
 		c.a.set(c.rlc(c.a))
 	}},
 	0x08: command{"LD (nn), SP", 2, 20, func(c *Cpu) {
@@ -56,6 +60,7 @@ var commandTable = map[opcode]command{
 	0x09: command{"", 0, 0, func(c *Cpu) {}},
 	0x0A: command{"", 0, 0, func(c *Cpu) {}},
 	0x0B: command{"DEC BC", 0, 8, func(c *Cpu) {
+		panic("inst")
 		c.b.setWord(c.b.Word() - 1)
 	}},
 	0x0C: command{"INC C", 0, 4, func(c *Cpu) {
@@ -108,6 +113,7 @@ var commandTable = map[opcode]command{
 		c.e.set(c.inst.p[0])
 	}},
 	0x1F: command{"RRA", 0, 4, func(c *Cpu) {
+		panic("inst")
 		c.a.set(c.rr(c.a))
 	}},
 	0x20: command{"JR NZ, *", 1, 8, func(c *Cpu) {
@@ -133,6 +139,7 @@ var commandTable = map[opcode]command{
 		c.h.set(c.inst.p[0])
 	}},
 	0x27: command{"DAA", 0, 4, func(c *Cpu) {
+		panic("inst")
 		a := c.a.Byte()
 		if a&0x0F > 9 || c.f.getFlag(flagH) {
 			a += 0x06
@@ -172,11 +179,13 @@ var commandTable = map[opcode]command{
 	}},
 	0x33: command{"", 0, 0, func(c *Cpu) {}},
 	0x34: command{"INC (HL)", 0, 12, func(c *Cpu) {
+		panic("inst")
 		v := c.readByte(c.h)
 		v = c.inc(v)
 		c.writeByte(c.h, v)
 	}},
 	0x35: command{"DEC (HL)", 0, 12, func(c *Cpu) {
+		panic("inst")
 		v := c.readByte(c.h)
 		v = c.dec(v)
 		c.writeByte(c.h, v)
@@ -187,7 +196,10 @@ var commandTable = map[opcode]command{
 	0x37: command{"", 0, 0, func(c *Cpu) {}},
 	0x38: command{"", 0, 0, func(c *Cpu) {}},
 	0x39: command{"", 0, 0, func(c *Cpu) {}},
-	0x3A: command{"", 0, 0, func(c *Cpu) {}},
+	0x3A: command{"LDD A, (HL)", 0, 8, func(c *Cpu) {
+		c.a.set(c.readByte(c.h))
+		c.h.setWord(c.h.Word() - 1)
+	}},
 	0x3B: command{"", 0, 0, func(c *Cpu) {}},
 	0x3C: command{"", 0, 0, func(c *Cpu) {}},
 	0x3D: command{"DEC A", 0, 4, func(c *Cpu) {
@@ -308,6 +320,7 @@ var commandTable = map[opcode]command{
 		c.a.set(c.a)
 	}},
 	0x80: command{"ADD A, B", 0, 4, func(c *Cpu) {
+		panic("inst")
 		c.a.set(c.add(c.a, c.b))
 	}},
 	0x81: command{"ADD A, C", 0, 4, func(c *Cpu) {
@@ -335,18 +348,25 @@ var commandTable = map[opcode]command{
 		c.a.set(c.adc(c.a, c.b))
 	}},
 	0x89: command{"ADC A, C", 0, 4, func(c *Cpu) {
+		panic("inst")
 		c.a.set(c.adc(c.a, c.c))
-	}}, 0x8A: command{"ADC A, D", 0, 4, func(c *Cpu) {
+	}},
+	0x8A: command{"ADC A, D", 0, 4, func(c *Cpu) {
 		c.a.set(c.adc(c.a, c.d))
-	}}, 0x8B: command{"ADC A, E", 0, 4, func(c *Cpu) {
+	}},
+	0x8B: command{"ADC A, E", 0, 4, func(c *Cpu) {
 		c.a.set(c.adc(c.a, c.e))
-	}}, 0x8C: command{"ADC A, H", 0, 4, func(c *Cpu) {
+	}},
+	0x8C: command{"ADC A, H", 0, 4, func(c *Cpu) {
 		c.a.set(c.adc(c.a, c.h))
-	}}, 0x8D: command{"ADC A, L", 0, 4, func(c *Cpu) {
+	}},
+	0x8D: command{"ADC A, L", 0, 4, func(c *Cpu) {
 		c.a.set(c.adc(c.a, c.l))
-	}}, 0x8E: command{"ADC A, (HL)", 0, 8, func(c *Cpu) {
+	}},
+	0x8E: command{"ADC A, (HL)", 0, 8, func(c *Cpu) {
 		c.a.set(c.adc(c.a, c.readByte(c.h)))
-	}}, 0x8F: command{"ADC A, A", 0, 4, func(c *Cpu) {
+	}},
+	0x8F: command{"ADC A, A", 0, 4, func(c *Cpu) {
 		c.a.set(c.adc(c.a, c.a))
 	}},
 	0x90: command{"SUB B", 0, 4, func(c *Cpu) {
@@ -387,22 +407,39 @@ var commandTable = map[opcode]command{
 	0xA2: command{"", 0, 0, func(c *Cpu) {}},
 	0xA3: command{"", 0, 0, func(c *Cpu) {}},
 	0xA4: command{"AND H", 0, 4, func(c *Cpu) {
+		panic("inst")
 		c.a.set(c.and(c.a, c.h))
 	}},
 	0xA5: command{"", 0, 0, func(c *Cpu) {}},
 	0xA6: command{"", 0, 0, func(c *Cpu) {}},
 	0xA7: command{"", 0, 0, func(c *Cpu) {}},
-	0xA8: command{"", 0, 0, func(c *Cpu) {}},
-	0xA9: command{"", 0, 0, func(c *Cpu) {}},
-	0xAA: command{"", 0, 0, func(c *Cpu) {}},
-	0xAB: command{"", 0, 0, func(c *Cpu) {}},
-	0xAC: command{"", 0, 0, func(c *Cpu) {}},
-	0xAD: command{"", 0, 0, func(c *Cpu) {}},
-	0xAE: command{"", 0, 0, func(c *Cpu) {}},
+
+	0xA8: command{"XOR B", 0, 4, func(c *Cpu) {
+		c.a.set(c.xor(c.a, c.b))
+	}},
+	0xA9: command{"XOR C", 0, 4, func(c *Cpu) {
+		c.a.set(c.xor(c.a, c.c))
+	}},
+	0xAA: command{"XOR D", 0, 4, func(c *Cpu) {
+		c.a.set(c.xor(c.a, c.d))
+	}},
+	0xAB: command{"XOR E", 0, 4, func(c *Cpu) {
+		c.a.set(c.xor(c.a, c.e))
+	}},
+	0xAC: command{"XOR H", 0, 4, func(c *Cpu) {
+		c.a.set(c.xor(c.a, c.h))
+	}},
+	0xAD: command{"XOR L", 0, 4, func(c *Cpu) {
+		c.a.set(c.xor(c.a, c.l))
+	}},
+	0xAE: command{"XOR (HL)", 0, 8, func(c *Cpu) {
+		c.a.set(c.xor(c.a, c.readByte(c.h)))
+	}},
 	0xAF: command{"XOR A", 0, 4, func(c *Cpu) {
 		c.a.set(c.xor(c.a, c.a))
 	}},
 	0xB0: command{"OR B", 0, 4, func(c *Cpu) {
+		panic("inst")
 		c.a.set(c.or(c.a, c.b))
 	}},
 	0xB1: command{"OR C", 0, 4, func(c *Cpu) {
@@ -476,6 +513,7 @@ var commandTable = map[opcode]command{
 		c.bit(7, c.h)
 	}},
 	0xCC: command{"CALL Z, nn", 2, 12, func(c *Cpu) {
+		panic("inst")
 		c.callF(flagZ, BytesToWord(c.inst.p[1], c.inst.p[0]))
 	}},
 	0xCD: command{"CALL nn", 2, 12, func(c *Cpu) {
@@ -528,6 +566,7 @@ var commandTable = map[opcode]command{
 		c.a.set(c.readByte(Word(0xFF00 + uint16(c.c.Byte()))))
 	}},
 	0xF3: command{"DI", 0, 4, func(c *Cpu) {
+		panic("DI")
 		c.ime = Bit(0)
 	}},
 	0xF4: command{"", 0, 0, func(c *Cpu) {}},
@@ -535,6 +574,7 @@ var commandTable = map[opcode]command{
 	0xF6: command{"", 0, 0, func(c *Cpu) {}},
 	0xF7: command{"", 0, 0, func(c *Cpu) {}},
 	0xF8: command{"LDHL SP, n", 1, 12, func(c *Cpu) {
+		panic("inst")
 		c.h.setWord(c.addWordR(c.sp, c.inst.p[0]))
 		c.f.resetFlag(flagZ)
 		c.f.resetFlag(flagN)

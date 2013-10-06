@@ -9,9 +9,11 @@ import (
 
 func main() {
 	doc := `usage: jibi [options] <rom>
-options:
+dev options:
   --dev-norender  disable rendering
-  --dev-quick     run a quick test cycle`
+  --dev-nokeypad  disable keypad input
+  --dev-quick     run a quick test cycle
+  --dev-nosquash  only display upper left`
 	args, _ := docopt.Parse(doc, nil, true, "", false)
 
 	rom, err := jibi.ReadRomFile(args["<rom>"].(string))
@@ -22,7 +24,9 @@ options:
 
 	options := jibi.Options{
 		Render: !args["--dev-norender"].(bool),
+		Keypad: !args["--dev-nokeypad"].(bool),
 		Quick:  args["--dev-quick"].(bool),
+		Squash: !args["--dev-nosquash"].(bool),
 	}
 	gameboy := jibi.New(rom, options)
 

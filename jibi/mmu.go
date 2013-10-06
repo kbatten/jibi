@@ -8,7 +8,7 @@ import (
 // write requeststo the appropriate module (cpu, gpu, etc) based on the memory
 // address.
 type Mmu struct {
-	Commander
+	CommanderInterface
 
 	// memory
 	bios     MemoryDevice
@@ -16,9 +16,6 @@ type Mmu struct {
 
 	// internal state
 	biosFinished bool
-
-	// notifications
-	notifyUnhandledMemory []chan string
 }
 
 // NewMmu creates a new Mmu with an optional bios that replaces 0x0000-0x00FF.
@@ -40,13 +37,13 @@ func NewMmu(bios []Byte) *Mmu {
 		NewRomDevice(Word(0x0000), Word(0xFF), bios),
 		handlers,
 		biosFinished,
-		[]chan string{}}
+	}
 	cmdHandlers := map[Command]CommandFn{
 		CmdHandleMemory: mmu.cmdHandleMemory,
 		CmdReadByteAt:   mmu.cmdReadByteAt,
 		CmdWriteByteAt:  mmu.cmdWriteByteAt,
 	}
-	commander.Start(nil, cmdHandlers, nil)
+	commander.start(nil, cmdHandlers, nil)
 	return mmu
 }
 
@@ -108,7 +105,7 @@ func (m *Mmu) selectMemoryDevice(addr Worder) (MemoryDevice, Word, error) {
 	}
 	u := "unknown"
 	if a == 0xFF00 {
-		u = "Register for reading joy pad info and determining system type. (R/W)"
+		//u = "Register for reading joy pad info and determining system type. (R/W)"
 	} else if a == 0xFF01 {
 		u = "Serial transfer data (R/W)"
 	} else if a == 0xFF02 {
@@ -139,6 +136,9 @@ func (m *Mmu) selectMemoryDevice(addr Worder) (MemoryDevice, Word, error) {
 		u = "Selection of Sound output terminal (R/W)"
 	} else if a == 0xFF26 {
 		u = "Sound on/off (R/W)"
+	}
+	if u == "unknown" {
+		panic(fmt.Errorf("unhandled memory access: 0x%04X - %s", addr, u))
 	}
 	return nilModule{}, Word(0), fmt.Errorf("unhandled memory access: 0x%04X - %s", addr, u)
 }
@@ -171,29 +171,17 @@ func (m *Mmu) WriteByteAt(addr Worder, b Byter) {
 
 func (m *Mmu) readByte(addr Worder) (Byte, error) {
 	md, addr, err := m.selectMemoryDevice(addr)
-	if err != nil {
-		for _, n := range m.notifyUnhandledMemory {
-			select {
-			case n <- err.Error():
-			default:
-			}
-		}
-	}
+	m.yield()
 	return md.ReadByteAt(addr), err
 }
 
 func (m *Mmu) writeByte(addr Worder, b Byte) error {
 	md, addr, err := m.selectMemoryDevice(addr)
-	md.WriteByteAt(addr, b)
 	if err != nil {
 		err = fmt.Errorf(fmt.Sprintf("%s - 0x%02X", err, b))
-		for _, n := range m.notifyUnhandledMemory {
-			select {
-			case n <- err.Error():
-			default:
-			}
-		}
 	}
+	m.yield()
+	md.WriteByteAt(addr, b)
 	return err
 }
 
@@ -252,7 +240,7 @@ func (r RamDevice) ReadByteAt(addr Worder) Byte {
 func (r RamDevice) WriteByteAt(addr Worder, b Byter) {
 	a := addr.Word() - r.addr
 	if a < 0 || a > r.size {
-		panic(fmt.Sprintf("ram write out of range 0x%04X 0x%02X %v", addr.Word(), b.Byte()))
+		panic(fmt.Sprintf("ram write out of range 0x%04X 0x%02X", addr.Word(), b.Byte()))
 	}
 	r.data[a] = b.Byte()
 }

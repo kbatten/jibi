@@ -59,7 +59,7 @@ type valueChan struct {
 
 // A Keypad manages reading the actual key input, and the button states.
 type Keypad struct {
-	Commander
+	CommanderInterface
 
 	mmu MemoryCommander
 
@@ -76,8 +76,8 @@ func setupInput() {
 }
 
 // NewKeypad returns a new Keypad object and starts up a goroutine.
-func NewKeypad(mmu MemoryCommander, skipSetup bool) *Keypad {
-	if !skipSetup {
+func NewKeypad(mmu MemoryCommander, runSetup bool) *Keypad {
+	if runSetup {
 		setupInput()
 	}
 	commander := NewCommander("keypad")
@@ -92,8 +92,8 @@ func NewKeypad(mmu MemoryCommander, skipSetup bool) *Keypad {
 		KeyStart:  valueChan{0, make(chan bool)},
 	}
 	kp := &Keypad{
-		Commander: commander,
-		keys:      keys,
+		CommanderInterface: commander,
+		keys:               keys,
 	}
 	cmdHandlers := map[Command]CommandFn{
 		CmdKeyDown: kp.cmdKeyDown,
@@ -101,7 +101,7 @@ func NewKeypad(mmu MemoryCommander, skipSetup bool) *Keypad {
 		CmdString:  kp.cmdString,
 	}
 	// no state functions so cmds are synchronous
-	commander.Start(nil, cmdHandlers, nil)
+	commander.start(nil, cmdHandlers, nil)
 	go loopKeyboard(kp)
 	return kp
 }
@@ -138,8 +138,8 @@ func (k *Keypad) cmdKeyDown(data interface{}) {
 	} else {
 		if k.keys[key].v == 0 {
 			k.keys[key] = valueChan{1, k.keys[key].c}
+			c := k.keys[key].c
 			go func() {
-				c := k.keys[key].c
 				for gotOne := true; gotOne; {
 					timeout := time.After(500 * time.Millisecond)
 					gotOne = false
@@ -189,6 +189,8 @@ func loopKeyboard(kp *Keypad) {
 			kp.RunCommand(CmdKeyDown, KeySelect)
 		case 0x0A: // <enter>
 			kp.RunCommand(CmdKeyDown, KeyStart)
+		case 0x70: // p
+			panic("KeyPanic")
 		}
 	}
 }

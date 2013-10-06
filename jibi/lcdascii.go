@@ -18,55 +18,74 @@ type Lcd interface {
 
 // An LcdASCII outputs as ascii characters to the terminal.
 type LcdASCII struct {
-	dr         bool
-	prevLine   []Byte
-	lineIndex  uint8
-	prevLineID uint8
+	dr           bool
+	prevLine     []Byte
+	lineIndex    uint8
+	prevDrawLine uint8
+	squash       bool
 }
 
 // NewLcdASCII returns an LcdASCII object.
-func NewLcdASCII() *LcdASCII {
-	return &LcdASCII{}
+func NewLcdASCII(squash bool) *LcdASCII {
+	return &LcdASCII{squash: squash}
 }
 
 // DrawLine draws the Byte Slice to the current line index, then advances the
 // index.
 func (lcd *LcdASCII) DrawLine(bl []Byte) {
-	// compress every two lines into 1
-	if lcd.lineIndex%2 == 1 {
-		for i := range bl {
-			bl[i] = bl[i]<<2 + lcd.prevLine[i]
+
+	blO := make([]Byte, len(bl))
+	copy(blO, bl)
+	drawLine := uint8(float64(lcd.lineIndex) * 50.0 / float64(lcdHeight))
+	if lcd.squash {
+		if drawLine == lcd.prevDrawLine && lcd.lineIndex != 0 {
+			// compress previous line and this line into one
+			for i := range bl {
+				bl[i] = bl[i] | (lcd.prevLine[i]&0xC0 | (lcd.prevLine[i]&0x03)<<2)
+			}
 		}
 	}
 	ls := ""
 	for _, c := range bl {
 		o := " "
 		if c == 1 {
-			o = "'" // 0001
+			if lcd.squash {
+				o = " " // 0001
+			} else {
+				o = "."
+			}
 		} else if c == 2 {
-			o = "'" // 0010
+			if lcd.squash {
+				o = "." // 0010
+			} else {
+				o = "_"
+			}
 		} else if c == 3 {
-			o = "'" // 0011
+			if lcd.squash {
+				o = "." // 0011
+			} else {
+				o = "*"
+			}
 		} else if c == 4 {
-			o = "." // 0100
+			o = " " // 0100
 		} else if c == 5 {
-			o = ":" // 0101
+			o = " " // 0101
 		} else if c == 6 {
-			o = ":" //0110
+			o = "." //0110
 		} else if c == 7 {
-			o = ":" // 0111
+			o = "." // 0111
 		} else if c == 8 {
-			o = "." // 1000
+			o = "'" // 1000
 		} else if c == 9 {
-			o = ":" // 1001
+			o = "'" // 1001
 		} else if c == 10 {
 			o = ":" // 1010
 		} else if c == 11 {
 			o = ":" // 1011
 		} else if c == 12 {
-			o = "." // 1100
+			o = "'" // 1100
 		} else if c == 13 {
-			o = ":" // 1101
+			o = "'" // 1101
 		} else if c == 14 {
 			o = ":" // 1110
 		} else if c == 15 {
@@ -74,20 +93,18 @@ func (lcd *LcdASCII) DrawLine(bl []Byte) {
 		}
 		ls += o
 	}
-
 	if lcd.dr == false {
-		lineID := uint8(float64(lcd.lineIndex) * 120.0 / float64(lcdHeight))
-		if lcd.prevLineID != lineID || lineID == 0 {
-			if lcd.lineIndex%2 == 0 {
-				fmt.Printf("\x1B[170D%s", ls)
-			} else {
-				fmt.Printf("\x1B[170D%s\n", ls)
+		if lcd.squash {
+			fmt.Printf("\x1B[%d;H%s", drawLine, ls)
+		} else {
+			if lcd.lineIndex < 50 {
+				fmt.Println(ls)
 			}
 		}
-		lcd.prevLineID = lineID
 	}
 
-	lcd.prevLine = bl
+	lcd.prevDrawLine = drawLine
+	lcd.prevLine = blO
 	lcd.lineIndex++
 }
 
