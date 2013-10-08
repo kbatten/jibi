@@ -61,8 +61,6 @@ type valueChan struct {
 type Keypad struct {
 	CommanderInterface
 
-	mmu MemoryCommander
-
 	p14  Byte
 	p15  Byte
 	keys map[Key]valueChan
@@ -76,7 +74,7 @@ func setupInput() {
 }
 
 // NewKeypad returns a new Keypad object and starts up a goroutine.
-func NewKeypad(mmu MemoryCommander, runSetup bool) *Keypad {
+func NewKeypad(runSetup bool) *Keypad {
 	if runSetup {
 		setupInput()
 	}

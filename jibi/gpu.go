@@ -22,9 +22,9 @@ type Gpu struct {
 	fgBuffer []Byte // 144x160 foreground 2bit bitmap buffer
 
 	// memory map
-	charRam    MemoryDevice
-	bgTilemap0 MemoryDevice
-	bgTilemap1 MemoryDevice
+	charRam    []Byte
+	bgTilemap0 []Byte
+	bgTilemap1 []Byte
 	lcdc       Byte
 	scy        Byte
 	scx        Byte
@@ -33,21 +33,25 @@ type Gpu struct {
 	wy         Byte
 	wx         Byte
 
+	// communication
+	rwChan chan Byte
+
 	// metrics
 	frameCounters []*Clock
 }
 
 // NewGpu creates a Gpu and starts a goroutine.
-func NewGpu(mmu MemoryCommander, cpu MemoryCommander, lcd Lcd, clk chan ClockType) *Gpu {
+func NewGpu(mmu *Mmu, cpu MemoryCommander, lcd Lcd, clk chan ClockType) *Gpu {
 	commander := NewCommander("gpu")
 	gpu := &Gpu{commander,
 		mmu, cpu, lcd, clk,
 		make([]Byte, 256*256), make([]Byte, int(lcdWidth)*int(lcdHeight)),
-		NewRamDevice(Word(0x8000), Word(0x1800), nil),
-		NewRamDevice(Word(0x9800), Word(0x400), nil),
-		NewRamDevice(Word(0x9C00), Word(0x400), nil),
+		make([]Byte, 0x1800),
+		make([]Byte, 0x400),
+		make([]Byte, 0x400),
 		Byte(0x91), // TODO: see if bios sets this for us
 		Byte(0), Byte(0), Byte(0), Byte(0), Byte(0), Byte(0),
+		make(chan Byte),
 		nil,
 	}
 	cmdHandlers := map[Command]CommandFn{
@@ -56,16 +60,16 @@ func NewGpu(mmu MemoryCommander, cpu MemoryCommander, lcd Lcd, clk chan ClockTyp
 		CmdFrameCounter: gpu.cmdFrameCounter,
 	}
 	commander.start(gpu.stateScanlineOam, cmdHandlers, clk)
-	mmu.RunCommand(CmdHandleMemory, MemoryHandlerRequest{Word(0x8000), Word(0x97FF), gpu})
-	mmu.RunCommand(CmdHandleMemory, MemoryHandlerRequest{Word(0x9800), Word(0x9BFF), gpu})
-	mmu.RunCommand(CmdHandleMemory, MemoryHandlerRequest{Word(0x9C00), Word(0x9FFF), gpu})
-	mmu.RunCommand(CmdHandleMemory, MemoryHandlerRequest{AddrLCDC, AddrLCDC, gpu})
-	mmu.RunCommand(CmdHandleMemory, MemoryHandlerRequest{AddrSCY, AddrSCY, gpu})
-	mmu.RunCommand(CmdHandleMemory, MemoryHandlerRequest{AddrSCX, AddrSCX, gpu})
-	mmu.RunCommand(CmdHandleMemory, MemoryHandlerRequest{AddrLY, AddrLY, gpu})
-	mmu.RunCommand(CmdHandleMemory, MemoryHandlerRequest{AddrBGP, AddrBGP, gpu})
-	mmu.RunCommand(CmdHandleMemory, MemoryHandlerRequest{AddrWY, AddrWY, gpu})
-	mmu.RunCommand(CmdHandleMemory, MemoryHandlerRequest{AddrWX, AddrWX, gpu})
+	mmu.HandleMemory(0x8000, 0x97FF, gpu)
+	mmu.HandleMemory(0x9800, 0x9BFF, gpu)
+	mmu.HandleMemory(0x9C00, 0x9FFF, gpu)
+	mmu.HandleMemory(AddrLCDC, AddrLCDC, gpu)
+	mmu.HandleMemory(AddrSCY, AddrSCY, gpu)
+	mmu.HandleMemory(AddrSCX, AddrSCX, gpu)
+	mmu.HandleMemory(AddrLY, AddrLY, gpu)
+	mmu.HandleMemory(AddrBGP, AddrBGP, gpu)
+	mmu.HandleMemory(AddrWY, AddrWY, gpu)
+	mmu.HandleMemory(AddrWX, AddrWX, gpu)
 	return gpu
 }
 
@@ -96,10 +100,9 @@ func (g *Gpu) cmdFrameCounter(resp interface{}) {
 }
 
 // ReadByteAt reads a single byte from the gpu at the specified address.
-func (g *Gpu) ReadByteAt(addr Worder) Byte {
-	req := ReadByteAtReq{addr.Word(), make(chan Byte)}
+func (g *Gpu) ReadByteAt(addr Worder, b chan Byte) {
+	req := ReadByteAtReq{addr.Word(), b}
 	g.RunCommand(CmdReadByteAt, req)
-	return <-req.b
 }
 
 // WriteByteAt writes a single byte to the gpu at the specified address.
@@ -113,11 +116,11 @@ func (g *Gpu) readByte(addr Worder) Byte {
 	if AddrLCDC == a {
 		return g.lcdc
 	} else if 0x8000 <= a && a <= 0x97FF {
-		return g.charRam.ReadByteAt(addr)
+		return g.charRam[addr.Word()-0x8000]
 	} else if 0x9800 <= a && a <= 0x9BFF {
-		return g.bgTilemap0.ReadByteAt(addr)
+		return g.bgTilemap0[addr.Word()-0x9800]
 	} else if 0x9C00 <= a && a <= 0x9FFF {
-		return g.bgTilemap1.ReadByteAt(addr)
+		return g.bgTilemap1[addr.Word()-0x9C00]
 	} else if AddrSCY == a {
 		return g.scy
 	} else if AddrSCX == a {
@@ -132,7 +135,8 @@ func (g *Gpu) readByte(addr Worder) Byte {
 		return g.wx
 	}
 	g.yield()
-	return g.mmu.ReadByteAt(a)
+	g.mmu.ReadByteAt(a, g.rwChan)
+	return <-g.rwChan
 }
 
 func (g *Gpu) writeByte(addr Worder, b Byter) {
@@ -147,11 +151,11 @@ func (g *Gpu) writeByte(addr Worder, b Byter) {
 			g.pause()
 		}
 	} else if 0x8000 <= a && a <= 0x97FF {
-		g.charRam.WriteByteAt(addr, b)
+		g.charRam[addr.Word()-0x8000] = b.Byte()
 	} else if 0x9800 <= a && a <= 0x9BFF {
-		g.bgTilemap0.WriteByteAt(addr, b)
+		g.bgTilemap0[addr.Word()-0x9800] = b.Byte()
 	} else if 0x9C00 <= a && a <= 0x9FFF {
-		g.bgTilemap1.WriteByteAt(addr, b)
+		g.bgTilemap1[addr.Word()-0x9C00] = b.Byte()
 	} else if AddrSCY == a {
 		g.scy = b.Byte()
 	} else if AddrSCX == a {
@@ -418,8 +422,8 @@ func (g *Gpu) stateHblank(first bool, t uint32) (CommanderStateFn, bool, uint32,
 
 func (g *Gpu) stateVblank(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
 	if first {
-		g.yield()
 		g.cpu.RunCommand(CmdSetInterrupt, InterruptVblank)
+		g.yield()
 		g.lcd.Blank()
 		g.generateFrame()
 		for _, clk := range g.frameCounters {

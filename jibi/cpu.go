@@ -34,9 +34,10 @@ type Cpu struct {
 	// interrupt master enable
 	ime Bit
 
-	mmu MemoryCommander
+	mmu *Mmu
 
-	zero   MemoryDevice
+	bios   []Byte
+	zero   []Byte
 	iflags Byte
 	ie     Byte
 
@@ -49,7 +50,7 @@ type Cpu struct {
 }
 
 // NewCpu creates a new Cpu with mmu connection.
-func NewCpu(mmu MemoryCommander) *Cpu {
+func NewCpu(mmu *Mmu, bios []Byte) *Cpu {
 	// use internal clock
 	// 1 machine cycle = 4 clock cycles
 	// machine cycles: 1.05MHz nop: 1 cycle
@@ -66,28 +67,48 @@ func NewCpu(mmu MemoryCommander) *Cpu {
 	l := newRegister8(nil)
 	h := newRegister8(&l)
 
-	commander := NewCommander("cpu")
+	biosFinished := true
+	if len(bios) > 0 {
+		biosFinished = false
+		biosN := make([]Byte, 0xFF)
+		copy(biosN, bios)
+		bios = biosN
+	}
 
+	commander := NewCommander("cpu")
 	cpu := &Cpu{CommanderInterface: commander,
 		a: a, b: b, c: c, d: d, e: e, f: f, l: l, h: h,
-		ime:    Bit(1),
-		mmu:    mmu,
-		zero:   NewRamDevice(Word(0xFF80), Word(0x7F), nil),
-		iflags: Byte(0),
-		ie:     Byte(0),
-		hz:     hz, period: period,
+		ime:  Bit(1),
+		mmu:  mmu,
+		bios: bios,
+		zero: make([]Byte, 0x7F),
+		hz:   hz, period: period,
+		biosFinished: biosFinished,
 	}
 	cmdHandlers := map[Command]CommandFn{
 		CmdClockAccumulator: cpu.cmdClock,
 		CmdString:           cpu.cmdString,
 		CmdSetInterrupt:     cpu.cmdSetInterrupt,
 		CmdOnInstruction:    cpu.cmdOnInstruction,
+		CmdHandleMemory: func(r interface{}) {
+			if mmu != nil {
+				mmu.cmdHandleMemory(r)
+			}
+		},
+		CmdHandleCpuMemory: func(r interface{}) {
+			if mmu != nil {
+				mmu.cmdHandleCpuMemory(r)
+			}
+		},
 	}
 
 	commander.start(cpu.step, cmdHandlers, nil)
-	mmu.RunCommand(CmdHandleMemory, MemoryHandlerRequest{0xFF80, 0xFFFE, cpu})
-	mmu.RunCommand(CmdHandleMemory, MemoryHandlerRequest{AddrIE, AddrIE, cpu})
-	mmu.RunCommand(CmdHandleMemory, MemoryHandlerRequest{AddrIF, AddrIF, cpu})
+	if mmu != nil {
+		mmu.connectCpu(cpu)
+		mmu.handleLocalMemory(CpuMemoryHandler{0xFF80, 0xFFFE, cpu})
+		mmu.handleLocalMemory(CpuMemoryHandler{AddrIE, AddrIE, cpu})
+		mmu.handleLocalMemory(CpuMemoryHandler{AddrIF, AddrIF, cpu})
+	}
 	return cpu
 }
 
@@ -136,10 +157,9 @@ func (c *Cpu) String() string {
 }
 
 // ReadByteAt reads a single byte from the cpu at the specified address.
-func (c *Cpu) ReadByteAt(addr Worder) Byte {
-	req := ReadByteAtReq{addr.Word(), make(chan Byte)}
+func (c *Cpu) ReadByteAt(addr Worder, b chan Byte) {
+	req := ReadByteAtReq{addr.Word(), b}
 	c.RunCommand(CmdReadByteAt, req)
-	return <-req.b
 }
 
 // WriteByteAt writes a single byte to the cpu at the specified address.
@@ -148,34 +168,76 @@ func (c *Cpu) WriteByteAt(addr Worder, b Byter) {
 	c.RunCommand(CmdWriteByteAt, req)
 }
 
-func (c *Cpu) readByte(addr Worder) Byte {
+// ReadLocalByteAt reads a single byte from the cpu at the specified address.
+func (c *Cpu) ReadLocalByteAt(addr Worder) Byte {
 	a := addr.Word()
-	if 0xFF80 <= a && a <= 0xFFFE {
-		return c.zero.ReadByteAt(addr)
+	if !c.biosFinished && a <= 0xFF {
+		return c.bios[addr.Word()]
+	} else if 0xFF80 <= a && a <= 0xFFFE {
+		return c.zero[addr.Word()-0xFF80]
 	} else if AddrIF == a {
 		panic("IF")
 		return c.iflags
 	} else if AddrIE == a {
 		panic("IE")
 		return c.ie
+	} else if c.mmu.isLocalMemory(addr) {
+		return c.mmu.readLocalByte(addr)
 	}
-	c.yield()
-	return c.mmu.ReadByteAt(a)
+	panic("cpu read out of range")
 }
 
-func (c *Cpu) writeByte(addr Worder, b Byter) {
+func (c *Cpu) readByte(addr Worder) Byte {
+	a := addr.Word()
+	if !c.biosFinished && a <= 0xFF {
+		return c.bios[addr.Word()]
+	} else if 0xFF80 <= a && a <= 0xFFFE {
+		return c.zero[addr.Word()-0xFF80]
+	} else if AddrIF == a {
+		panic("IF")
+		return c.iflags
+	} else if AddrIE == a {
+		panic("IE")
+		return c.ie
+	} else if c.mmu.isLocalMemory(addr) {
+		return c.mmu.readLocalByte(addr)
+	}
+	c.yield()
+	return c.mmu.readRemoteByte(a)
+}
+
+// WriteLocalByteAt writes a single byte to the cpu at the specified address.
+func (c *Cpu) WriteLocalByteAt(addr Worder, b Byter) {
 	a := addr.Word()
 	if 0xFF80 <= a && a <= 0xFFFE {
-		c.zero.WriteByteAt(addr, b)
+		c.zero[addr.Word()-0xFF80] = b.Byte()
 	} else if AddrIF == a {
 		panic("IF")
 		c.iflags = b.Byte()
 	} else if AddrIE == a {
 		panic("IE")
 		c.ie = b.Byte()
+	} else if c.mmu.isLocalMemory(addr) {
+		c.mmu.writeLocalByte(addr, b)
+	}
+	panic("cpu write out of range")
+}
+
+func (c *Cpu) writeByte(addr Worder, b Byter) {
+	a := addr.Word()
+	if 0xFF80 <= a && a <= 0xFFFE {
+		c.zero[addr.Word()-0xFF80] = b.Byte()
+	} else if AddrIF == a {
+		panic("IF")
+		c.iflags = b.Byte()
+	} else if AddrIE == a {
+		panic("IE")
+		c.ie = b.Byte()
+	} else if c.mmu.isLocalMemory(addr) {
+		c.mmu.writeLocalByte(addr, b)
 	} else {
 		c.yield()
-		c.mmu.WriteByteAt(addr, b)
+		c.mmu.writeRemoteByte(addr, b)
 	}
 }
 
@@ -215,7 +277,6 @@ func (c *Cpu) fetch() {
 
 func (c *Cpu) execute() {
 	if !c.biosFinished && c.pc == 0x0100 {
-		c.mmu.RunCommand(CmdUnloadBios, nil)
 		c.biosFinished = true
 	}
 	if cmd, ok := commandTable[c.inst.o]; ok {

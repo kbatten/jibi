@@ -6,9 +6,7 @@ import (
 )
 
 func TestXor(t *testing.T) {
-	mmu := NewMmu([]Byte{0xA8, 0xA8})
-	cpu := NewCpu(mmu)
-	defer mmu.RunCommand(CmdStop, nil)
+	cpu := NewCpu(nil, []Byte{0xA8, 0xA8})
 	defer cpu.RunCommand(CmdStop, nil)
 
 	// XOR B -- NZ
@@ -39,9 +37,7 @@ func TestXor(t *testing.T) {
 }
 
 func TestBit(t *testing.T) {
-	mmu := NewMmu([]Byte{0xCB, 0x7C, 0xCB, 0x7C})
-	cpu := NewCpu(mmu)
-	defer mmu.RunCommand(CmdStop, nil)
+	cpu := NewCpu(nil, []Byte{0xCB, 0x7C, 0xCB, 0x7C})
 	defer cpu.RunCommand(CmdStop, nil)
 
 	// BIT 7, H -- NZ
@@ -64,9 +60,7 @@ func TestBit(t *testing.T) {
 }
 
 func TestJp(t *testing.T) {
-	mmu := NewMmu([]Byte{0xC3, 0x21, 0x67})
-	cpu := NewCpu(mmu)
-	defer mmu.RunCommand(CmdStop, nil)
+	cpu := NewCpu(nil, []Byte{0xC3, 0x21, 0x67})
 	defer cpu.RunCommand(CmdStop, nil)
 
 	// JP nn
@@ -78,9 +72,7 @@ func TestJp(t *testing.T) {
 }
 
 func TestJr(t *testing.T) {
-	mmu := NewMmu([]Byte{0x00, 0x00, 0x00, 0x00, 0x18, 0x05, 0x18, 0xFC})
-	cpu := NewCpu(mmu)
-	defer mmu.RunCommand(CmdStop, nil)
+	cpu := NewCpu(nil, []Byte{0x00, 0x00, 0x00, 0x00, 0x18, 0x05, 0x18, 0xFC})
 	defer cpu.RunCommand(CmdStop, nil)
 
 	// JR * -- positive offset
@@ -101,9 +93,7 @@ func TestJr(t *testing.T) {
 }
 
 func TestJrNF(t *testing.T) {
-	mmu := NewMmu([]Byte{0x00, 0x00, 0x00, 0x00, 0x20, 0x05, 0x20, 0xFC})
-	cpu := NewCpu(mmu)
-	defer mmu.RunCommand(CmdStop, nil)
+	cpu := NewCpu(nil, []Byte{0x00, 0x00, 0x00, 0x00, 0x20, 0x05, 0x20, 0xFC})
 	defer cpu.RunCommand(CmdStop, nil)
 
 	// JR NZ, 05 -- Z
@@ -135,9 +125,7 @@ func TestJrNF(t *testing.T) {
 }
 
 func TestJrF(t *testing.T) {
-	mmu := NewMmu([]Byte{0x00, 0x00, 0x00, 0x00, 0x28, 0x05, 0x28, 0xFC})
-	cpu := NewCpu(mmu)
-	defer mmu.RunCommand(CmdStop, nil)
+	cpu := NewCpu(nil, []Byte{0x00, 0x00, 0x00, 0x00, 0x28, 0x05, 0x28, 0xFC})
 	defer cpu.RunCommand(CmdStop, nil)
 
 	// JR Z, 05 -- NZ
@@ -169,9 +157,7 @@ func TestJrF(t *testing.T) {
 }
 
 func TestCall(t *testing.T) {
-	mmu := NewMmu([]Byte{0xCD, 0x40, 0x01})
-	cpu := NewCpu(mmu)
-	defer mmu.RunCommand(CmdStop, nil)
+	cpu := NewCpu(nil, []Byte{0xCD, 0x40, 0x01})
 	defer cpu.RunCommand(CmdStop, nil)
 
 	cpu.sp = register16(0xFFFE)
@@ -192,9 +178,7 @@ func TestCall(t *testing.T) {
 }
 
 func TestRet(t *testing.T) {
-	mmu := NewMmu([]Byte{0xC9, 0x40, 0x01})
-	cpu := NewCpu(mmu)
-	defer mmu.RunCommand(CmdStop, nil)
+	cpu := NewCpu(nil, []Byte{0xC9, 0x40, 0x01})
 	defer cpu.RunCommand(CmdStop, nil)
 
 	cpu.sp = register16(0x01)
@@ -211,9 +195,7 @@ func TestRet(t *testing.T) {
 }
 
 func TestPush(t *testing.T) {
-	mmu := NewMmu([]Byte{0xC5})
-	cpu := NewCpu(mmu)
-	defer mmu.RunCommand(CmdStop, nil)
+	cpu := NewCpu(nil, []Byte{0xC5})
 	defer cpu.RunCommand(CmdStop, nil)
 
 	cpu.sp = register16(0xFFFE)
@@ -232,9 +214,7 @@ func TestPush(t *testing.T) {
 }
 
 func TestPop(t *testing.T) {
-	mmu := NewMmu([]Byte{0xC1, 0x00, 0x00, 0x00, 0x03, 0x20})
-	cpu := NewCpu(mmu)
-	defer mmu.RunCommand(CmdStop, nil)
+	cpu := NewCpu(nil, []Byte{0xC1, 0x00, 0x00, 0x00, 0x03, 0x20})
 	defer cpu.RunCommand(CmdStop, nil)
 
 	cpu.sp = register16(0x04)
@@ -251,9 +231,7 @@ func TestPop(t *testing.T) {
 }
 
 func TestRl(t *testing.T) {
-	mmu := NewMmu([]Byte{0xCB, 0x11})
-	cpu := NewCpu(mmu)
-	defer mmu.RunCommand(CmdStop, nil)
+	cpu := NewCpu(nil, []Byte{0xCB, 0x11})
 	defer cpu.RunCommand(CmdStop, nil)
 
 	// RL C -- C, bit7 low
@@ -309,9 +287,7 @@ func TestRl(t *testing.T) {
 }
 
 func TestDec(t *testing.T) {
-	mmu := NewMmu([]Byte{0x05})
-	cpu := NewCpu(mmu)
-	defer mmu.RunCommand(CmdStop, nil)
+	cpu := NewCpu(nil, []Byte{0x05})
 	defer cpu.RunCommand(CmdStop, nil)
 
 	// DEC B -- NZ, NH
@@ -377,9 +353,7 @@ func TestDec(t *testing.T) {
 }
 
 func TestInc(t *testing.T) {
-	mmu := NewMmu([]Byte{0x04})
-	cpu := NewCpu(mmu)
-	defer mmu.RunCommand(CmdStop, nil)
+	cpu := NewCpu(nil, []Byte{0x04})
 	defer cpu.RunCommand(CmdStop, nil)
 
 	// INC B -- NZ, NH
@@ -430,9 +404,7 @@ func TestInc(t *testing.T) {
 }
 
 func TestSub(t *testing.T) {
-	mmu := NewMmu([]Byte{0x90})
-	cpu := NewCpu(mmu)
-	defer mmu.RunCommand(CmdStop, nil)
+	cpu := NewCpu(nil, []Byte{0x90})
 	defer cpu.RunCommand(CmdStop, nil)
 
 	// SUB B -- NZ, NH, NC
@@ -537,9 +509,7 @@ func TestSub(t *testing.T) {
 }
 
 func TestLdd(t *testing.T) {
-	mmu := NewMmu([]Byte{0x3A, 0x32, 0x00, 0x89})
-	cpu := NewCpu(mmu)
-	defer mmu.RunCommand(CmdStop, nil)
+	cpu := NewCpu(nil, []Byte{0x3A, 0x32, 0x00, 0x89})
 	defer cpu.RunCommand(CmdStop, nil)
 
 	// LDD A, (HL)
@@ -567,9 +537,7 @@ func TestLdd(t *testing.T) {
 }
 
 func TestLdi(t *testing.T) {
-	mmu := NewMmu([]Byte{0x2A, 0x22, 0x00, 0x89})
-	cpu := NewCpu(mmu)
-	defer mmu.RunCommand(CmdStop, nil)
+	cpu := NewCpu(nil, []Byte{0x2A, 0x22, 0x00, 0x89})
 	defer cpu.RunCommand(CmdStop, nil)
 
 	// LDI A, (HL)
@@ -597,9 +565,7 @@ func TestLdi(t *testing.T) {
 }
 
 func TestInc16(t *testing.T) {
-	mmu := NewMmu([]Byte{0x23})
-	cpu := NewCpu(mmu)
-	defer mmu.RunCommand(CmdStop, nil)
+	cpu := NewCpu(nil, []Byte{0x23})
 	defer cpu.RunCommand(CmdStop, nil)
 
 	// INC HL

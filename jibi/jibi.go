@@ -11,7 +11,7 @@ type Options struct {
 	Render   bool
 	Keypad   bool
 	Quick    bool
-	Squash bool
+	Squash   bool
 }
 
 // Jibi is the glue that holds everything together.
@@ -28,15 +28,15 @@ type Jibi struct {
 
 // New returns a new Jibi in a Paused state.
 func New(rom []Byte, options Options) Jibi {
-	mmu := NewMmu(bios)
-	cpu := NewCpu(mmu)
+	mmu := NewMmu()
+	cpu := NewCpu(mmu, bios)
 	lcd := NewLcdASCII(options.Squash)
 	gpu := NewGpu(mmu, cpu, lcd, cpu.Clock())
 	cart := NewCartridge(mmu, rom)
-	kp := NewKeypad(mmu, options.Keypad)
+	kp := NewKeypad(options.Keypad)
 
 	if options.Skipbios {
-		mmu.RunCommand(CmdUnloadBios, nil)
+		cpu.RunCommand(CmdUnloadBios, nil)
 	}
 	if !options.Render {
 		lcd.DisableRender()
@@ -47,9 +47,7 @@ func New(rom []Byte, options Options) Jibi {
 
 // RunCommand displatches a command to the correct piece.
 func (j Jibi) RunCommand(cmd Command, resp chan string) {
-	if cmd < cmdMMU {
-		j.mmu.RunCommand(cmd, resp)
-	} else if cmd < cmdCPU {
+	if cmd < cmdCPU {
 		j.cpu.RunCommand(cmd, resp)
 	} else if cmd < cmdGPU {
 		j.gpu.RunCommand(cmd, resp)
@@ -57,7 +55,6 @@ func (j Jibi) RunCommand(cmd Command, resp chan string) {
 		j.kp.RunCommand(cmd, resp)
 	} else if cmd < cmdALL {
 		j.cpu.RunCommand(cmd, resp)
-		j.mmu.RunCommand(cmd, resp)
 		j.gpu.RunCommand(cmd, resp)
 		j.kp.RunCommand(cmd, resp)
 	} else if cmd < cmdCPUGPU {
@@ -75,10 +72,6 @@ func (j Jibi) Run() {
 	cpuCmds := <-resp
 	j.cpu.RunCommand(CmdLoopCounter, resp)
 	cpuLoops := <-resp
-	j.mmu.RunCommand(CmdCmdCounter, resp)
-	mmuCmds := <-resp
-	j.mmu.RunCommand(CmdLoopCounter, resp)
-	mmuLoops := <-resp
 	j.gpu.RunCommand(CmdCmdCounter, resp)
 	gpuCmds := <-resp
 	j.gpu.RunCommand(CmdLoopCounter, resp)
@@ -98,8 +91,6 @@ func (j Jibi) Run() {
 	cpuHz := float64(0)
 	cpuCps := ClockType(0)
 	cpuLps := ClockType(0)
-	mmuCps := ClockType(0)
-	mmuLps := ClockType(0)
 	gpuCps := ClockType(0)
 	gpuLps := ClockType(0)
 	gpuFps := float64(0)
@@ -119,8 +110,6 @@ func (j Jibi) Run() {
 			}
 			cpuCps = 0
 			cpuLps = 0
-			mmuCps = 0
-			mmuLps = 0
 			gpuCps = 0
 			gpuLps = 0
 			kpCps = 0
@@ -133,10 +122,6 @@ func (j Jibi) Run() {
 					cpuCps += t
 				case t := <-cpuLoops:
 					cpuLps += t
-				case t := <-mmuCmds:
-					mmuCps += t
-				case t := <-mmuLoops:
-					mmuLps += t
 				case t := <-gpuCmds:
 					gpuCps += t
 				case t := <-gpuLoops:
@@ -169,13 +154,11 @@ func (j Jibi) Run() {
 				}
 				s += fmt.Sprintf("%s\n%s\n"+
 					"   cpu: %5.2fMhz cpuCps: %8d cpuLps: %8d "+
-					"mmuCps: %8d mmuLps: %8d\n"+
 					"gpuFps: %8.2f gpuCps: %8d gpuLps: %8d "+
 					" kpCps: %8d  kpLps: %8d "+
 					"\n",
 					j.cpu, j.kp,
 					cpuHz/(1e6*count), cpuCps, cpuLps,
-					mmuCps, mmuLps,
 					gpuFps/count, gpuCps, gpuLps,
 					kpCps, kpLps)
 				if j.O.Render {

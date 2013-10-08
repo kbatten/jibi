@@ -11,10 +11,9 @@ type Command int
 const (
 	CmdNil Command = iota
 
-	CmdHandleMemory
+	CmdHandleMemory    // memory that is not controlled by the cpu
+	CmdHandleCpuMemory // memory that is controlled by the cpu goroutine
 	CmdUnloadBios
-	cmdMMU
-
 	CmdSetInterrupt
 	CmdClockAccumulator // accumulating clock
 	CmdOnInstruction    // blocking clock channel that ticks after every instruction
@@ -52,10 +51,10 @@ func (c Command) String() string {
 		return "CmdNil"
 	case CmdHandleMemory:
 		return "CmdHandleMemory"
+	case CmdHandleCpuMemory:
+		return "CmdHandleCpuMemory"
 	case CmdUnloadBios:
 		return "CmdUnloadBios"
-	case cmdMMU:
-		return "cmdMMU"
 	case CmdClockAccumulator:
 		return "CmdClockAccumulator"
 	case CmdOnInstruction:
@@ -135,7 +134,8 @@ type Commander struct {
 
 // NewCommander returns a new named Commander object.
 func NewCommander(name string) *Commander {
-	c := &Commander{name, make(chan CommandResponse),
+	c := &Commander{name,
+		make(chan CommandResponse, 2), // HACK
 		nil, nil, false, false, nil,
 	}
 	return c
@@ -165,7 +165,7 @@ func (c *Commander) String() string {
 // A MemoryCommander is the generic interface for something that is both a
 // MemoryDevice and a Commander embedded interface.
 type MemoryCommander interface {
-	ReadByteAt(Worder) Byte
+	ReadByteAt(Worder, chan Byte)
 	WriteByteAt(Worder, Byter)
 	CommanderInterface
 }
