@@ -45,6 +45,9 @@ type Cpu struct {
 	// internal state
 	biosFinished bool
 
+	// notifications
+	notifyInst []chan string
+
 	// cpu information
 	hz     float64
 	period time.Duration
@@ -125,12 +128,12 @@ func (c *Cpu) cmdClock(resp interface{}) {
 }
 
 func (c *Cpu) cmdOnInstruction(resp interface{}) {
-	if resp, ok := resp.(chan chan ClockType); !ok {
+	if resp, ok := resp.(chan chan string); !ok {
 		panic("invalid command response type")
 	} else {
-		clk := make(chan ClockType)
-		c.tClocks = append(c.tClocks, NewClock(clk))
-		resp <- clk
+		inst := make(chan string)
+		c.notifyInst = append(c.notifyInst, inst)
+		resp <- inst
 	}
 }
 
@@ -304,6 +307,10 @@ func (c *Cpu) step(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32
 	if !c.biosFinished && c.pc == 0x0100 {
 		c.biosFinished = true
 	}
+	for _, inst := range c.notifyInst {
+		inst <- c.str()
+	}
+
 	c.interrupt() // handle interrupts
 	c.fetch()     // load next instruction into c.inst
 	c.execute()   // execute c.inst instruction

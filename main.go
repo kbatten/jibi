@@ -13,7 +13,8 @@ dev options:
   --dev-norender  disable rendering
   --dev-nokeypad  disable keypad input
   --dev-quick     run a quick test cycle
-  --dev-nosquash  only display upper left`
+  --dev-nosquash  only display upper left
+  --dev-every     print every exectuted instruction`
 	args, _ := docopt.Parse(doc, nil, true, "", false)
 
 	rom, err := jibi.ReadRomFile(args["<rom>"].(string))
@@ -27,6 +28,7 @@ dev options:
 		Keypad: !args["--dev-nokeypad"].(bool),
 		Quick:  args["--dev-quick"].(bool),
 		Squash: !args["--dev-nosquash"].(bool),
+		Every:  args["--dev-every"].(bool),
 	}
 	gameboy := jibi.New(rom, options)
 

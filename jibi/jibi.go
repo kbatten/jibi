@@ -12,6 +12,7 @@ type Options struct {
 	Keypad   bool
 	Quick    bool
 	Squash   bool
+	Every    bool
 }
 
 // Jibi is the glue that holds everything together.
@@ -66,10 +67,8 @@ func (j Jibi) RunCommand(cmd Command, resp chan string) {
 // Run starts the Jibi and waits till it ends before returning.
 func (j Jibi) Run() {
 	// metrics
-	resp := make(chan chan ClockType)
-	j.cpu.RunCommand(CmdOnInstruction, resp)
-	inst := <-resp
 	cpuClk := j.cpu.Clock()
+	resp := make(chan chan ClockType)
 	j.cpu.RunCommand(CmdCmdCounter, resp)
 	cpuCmds := <-resp
 	j.cpu.RunCommand(CmdLoopCounter, resp)
@@ -84,8 +83,18 @@ func (j Jibi) Run() {
 	kpCmds := <-resp
 	j.kp.RunCommand(CmdLoopCounter, resp)
 	kpLoops := <-resp
+
 	j.Play()
 	ticker := time.NewTicker(1 * time.Second)
+	tickerC := ticker.C
+
+	var inst chan string
+	if j.O.Every {
+		respStr := make(chan chan string)
+		j.cpu.RunCommand(CmdOnInstruction, respStr)
+		inst = <-respStr
+		tickerC = nil
+	}
 	var timeout <-chan time.Time
 	if j.O.Quick {
 		timeout = time.After(2 * time.Second)
@@ -104,9 +113,9 @@ func (j Jibi) Run() {
 		case <-timeout:
 			fmt.Println("timeout")
 			running = false
-		case <-inst:
-			fmt.Println(j.cpu)
-		case <-ticker.C:
+		case u := <-inst:
+			fmt.Println(u)
+		case <-tickerC:
 			if count >= 10.0 {
 				cpuHz *= 0.9
 				gpuFps *= 0.9
