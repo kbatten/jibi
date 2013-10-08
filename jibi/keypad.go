@@ -74,7 +74,7 @@ func setupInput() {
 }
 
 // NewKeypad returns a new Keypad object and starts up a goroutine.
-func NewKeypad(runSetup bool) *Keypad {
+func NewKeypad(mmu *Mmu, runSetup bool) *Keypad {
 	if runSetup {
 		setupInput()
 	}
@@ -94,13 +94,17 @@ func NewKeypad(runSetup bool) *Keypad {
 		keys:               keys,
 	}
 	cmdHandlers := map[Command]CommandFn{
-		CmdKeyDown: kp.cmdKeyDown,
-		CmdKeyUp:   kp.cmdKeyUp,
-		CmdString:  kp.cmdString,
+		CmdReadByteAt:  kp.cmdReadByteAt,
+		CmdWriteByteAt: kp.cmdWriteByteAt,
+		CmdKeyDown:     kp.cmdKeyDown,
+		CmdKeyUp:       kp.cmdKeyUp,
+		CmdString:      kp.cmdString,
 	}
 	// no state functions so cmds are synchronous
 	commander.start(nil, cmdHandlers, nil)
 	go loopKeyboard(kp)
+
+	mmu.HandleMemory(AddrP1, AddrP1, kp)
 	return kp
 }
 
@@ -128,6 +132,34 @@ func (k *Keypad) str() string {
 		}
 	}
 	return s
+}
+
+// ReadByteAt reads a single byte from the keypad at the specified address.
+func (k *Keypad) ReadByteAt(addr Worder, b chan Byte) {
+	req := ReadByteAtReq{addr.Word(), b}
+	k.RunCommand(CmdReadByteAt, req)
+}
+
+// WriteByteAt writes a single byte to the keypad at the specified address.
+func (k *Keypad) WriteByteAt(addr Worder, b Byter) {
+	req := WriteByteAtReq{addr.Word(), b.Byte()}
+	k.RunCommand(CmdWriteByteAt, req)
+}
+
+func (k *Keypad) cmdReadByteAt(resp interface{}) {
+	if req, ok := resp.(ReadByteAtReq); !ok {
+		panic("invalid command response type")
+	} else {
+		req.b <- k.readByte(req.addr)
+	}
+}
+
+func (k *Keypad) cmdWriteByteAt(resp interface{}) {
+	if req, ok := resp.(WriteByteAtReq); !ok {
+		panic("invalid command response type")
+	} else {
+		k.writeByte(req.addr, req.b)
+	}
 }
 
 func (k *Keypad) cmdKeyDown(data interface{}) {

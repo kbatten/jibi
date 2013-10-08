@@ -25,11 +25,15 @@ type Gpu struct {
 	charRam    []Byte
 	bgTilemap0 []Byte
 	bgTilemap1 []Byte
+	oam        []Byte
 	lcdc       Byte
+	stat       Byte
 	scy        Byte
 	scx        Byte
 	ly         Byte
 	bgp        Byte
+	obp0       Byte
+	obp1       Byte
 	wy         Byte
 	wx         Byte
 
@@ -43,16 +47,15 @@ type Gpu struct {
 // NewGpu creates a Gpu and starts a goroutine.
 func NewGpu(mmu *Mmu, cpu MemoryCommander, lcd Lcd, clk chan ClockType) *Gpu {
 	commander := NewCommander("gpu")
-	gpu := &Gpu{commander,
-		mmu, cpu, lcd, clk,
-		make([]Byte, 256*256), make([]Byte, int(lcdWidth)*int(lcdHeight)),
-		make([]Byte, 0x1800),
-		make([]Byte, 0x400),
-		make([]Byte, 0x400),
-		Byte(0x91), // TODO: see if bios sets this for us
-		Byte(0), Byte(0), Byte(0), Byte(0), Byte(0), Byte(0),
-		make(chan Byte),
-		nil,
+	gpu := &Gpu{CommanderInterface: commander,
+		mmu: mmu, cpu: cpu, lcd: lcd, clk: clk,
+		bgBuffer:   make([]Byte, 256*256),
+		fgBuffer:   make([]Byte, int(lcdWidth)*int(lcdHeight)),
+		charRam:    make([]Byte, 0x1800),
+		bgTilemap0: make([]Byte, 0x400),
+		bgTilemap1: make([]Byte, 0x400),
+		oam:        make([]Byte, 0xA0),
+		rwChan:     make(chan Byte),
 	}
 	cmdHandlers := map[Command]CommandFn{
 		CmdReadByteAt:   gpu.cmdReadByteAt,
@@ -63,11 +66,15 @@ func NewGpu(mmu *Mmu, cpu MemoryCommander, lcd Lcd, clk chan ClockType) *Gpu {
 	mmu.HandleMemory(0x8000, 0x97FF, gpu)
 	mmu.HandleMemory(0x9800, 0x9BFF, gpu)
 	mmu.HandleMemory(0x9C00, 0x9FFF, gpu)
+	mmu.HandleMemory(0xFE00, 0xFE9F, gpu)
 	mmu.HandleMemory(AddrLCDC, AddrLCDC, gpu)
+	mmu.HandleMemory(AddrSTAT, AddrSTAT, gpu)
 	mmu.HandleMemory(AddrSCY, AddrSCY, gpu)
 	mmu.HandleMemory(AddrSCX, AddrSCX, gpu)
 	mmu.HandleMemory(AddrLY, AddrLY, gpu)
 	mmu.HandleMemory(AddrBGP, AddrBGP, gpu)
+	mmu.HandleMemory(AddrOBP0, AddrOBP0, gpu)
+	mmu.HandleMemory(AddrOBP1, AddrOBP1, gpu)
 	mmu.HandleMemory(AddrWY, AddrWY, gpu)
 	mmu.HandleMemory(AddrWX, AddrWX, gpu)
 	return gpu
@@ -116,11 +123,15 @@ func (g *Gpu) readByte(addr Worder) Byte {
 	if AddrLCDC == a {
 		return g.lcdc
 	} else if 0x8000 <= a && a <= 0x97FF {
-		return g.charRam[addr.Word()-0x8000]
+		return g.charRam[a-0x8000]
 	} else if 0x9800 <= a && a <= 0x9BFF {
-		return g.bgTilemap0[addr.Word()-0x9800]
+		return g.bgTilemap0[a-0x9800]
 	} else if 0x9C00 <= a && a <= 0x9FFF {
-		return g.bgTilemap1[addr.Word()-0x9C00]
+		return g.bgTilemap1[a-0x9C00]
+	} else if 0xFE00 <= a && a <= 0xFE9F {
+		return g.oam[a-0xFE00]
+	} else if AddrSTAT == a {
+		return g.stat
 	} else if AddrSCY == a {
 		return g.scy
 	} else if AddrSCX == a {
@@ -129,6 +140,10 @@ func (g *Gpu) readByte(addr Worder) Byte {
 		return g.ly
 	} else if AddrBGP == a {
 		return g.bgp
+	} else if AddrOBP0 == a {
+		return g.obp0
+	} else if AddrOBP1 == a {
+		return g.obp1
 	} else if AddrWY == a {
 		return g.wy
 	} else if AddrWX == a {
@@ -149,13 +164,18 @@ func (g *Gpu) writeByte(addr Worder, b Byter) {
 			g.play()
 		} else {
 			g.pause()
+			g.ly = 0
 		}
 	} else if 0x8000 <= a && a <= 0x97FF {
-		g.charRam[addr.Word()-0x8000] = b.Byte()
+		g.charRam[a-0x8000] = b.Byte()
 	} else if 0x9800 <= a && a <= 0x9BFF {
-		g.bgTilemap0[addr.Word()-0x9800] = b.Byte()
+		g.bgTilemap0[a-0x9800] = b.Byte()
 	} else if 0x9C00 <= a && a <= 0x9FFF {
-		g.bgTilemap1[addr.Word()-0x9C00] = b.Byte()
+		g.bgTilemap1[a-0x9C00] = b.Byte()
+	} else if 0xFE00 <= a && a <= 0xFE9F {
+		g.oam[a-0xFE00] = b.Byte()
+	} else if AddrSTAT == a {
+		g.stat = b.Byte()
 	} else if AddrSCY == a {
 		g.scy = b.Byte()
 	} else if AddrSCX == a {
@@ -164,6 +184,10 @@ func (g *Gpu) writeByte(addr Worder, b Byter) {
 		g.ly = b.Byte()
 	} else if AddrBGP == a {
 		g.bgp = b.Byte()
+	} else if AddrOBP0 == a {
+		g.obp0 = b.Byte()
+	} else if AddrOBP1 == a {
+		g.obp1 = b.Byte()
 	} else if AddrWY == a {
 		g.wy = b.Byte()
 	} else if AddrWX == a {
@@ -196,6 +220,7 @@ func paintTile(frameBuffer []Byte, tileData []Byte, x, y uint8, above, xflip, yf
 */
 func (g *Gpu) generateLine(line Byte) []Byte {
 	// get background
+	// TODO: bg wraps to the same X, not to X+1, same with Y
 	offset := uint16(line+g.scy)*256 + uint16(g.scx)
 	lbs := g.bgBuffer[offset : offset+uint16(lcdWidth)-1]
 	// TODO: draw up to 10 sprites
@@ -384,6 +409,9 @@ func (g *Gpu) generateFrame() {
 }
 
 func (g *Gpu) stateScanlineOam(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
+	if first {
+		g.stat = g.stat&0x7C | 0x2
+	}
 	if t >= 80 {
 		t -= 80
 		return g.stateScanlineVram, true, t, 172
@@ -393,6 +421,7 @@ func (g *Gpu) stateScanlineOam(first bool, t uint32) (CommanderStateFn, bool, ui
 
 func (g *Gpu) stateScanlineVram(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
 	if first {
+		g.stat = g.stat&0x7C | 0x3
 		g.lcd.DrawLine(g.generateLine(g.ly))
 	}
 	if t >= 172 {
@@ -406,6 +435,9 @@ func (g *Gpu) stateScanlineVram(first bool, t uint32) (CommanderStateFn, bool, u
 }
 
 func (g *Gpu) stateHblank(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
+	if first {
+		g.stat = g.stat&0x7C | 0x1
+	}
 	if t >= 204 {
 		t -= 204
 		g.ly++
@@ -422,6 +454,7 @@ func (g *Gpu) stateHblank(first bool, t uint32) (CommanderStateFn, bool, uint32,
 
 func (g *Gpu) stateVblank(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
 	if first {
+		g.stat = g.stat&0x7C | 0x0
 		g.cpu.RunCommand(CmdSetInterrupt, InterruptVblank)
 		g.yield()
 		g.lcd.Blank()

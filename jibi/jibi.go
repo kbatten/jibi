@@ -33,7 +33,7 @@ func New(rom []Byte, options Options) Jibi {
 	lcd := NewLcdASCII(options.Squash)
 	gpu := NewGpu(mmu, cpu, lcd, cpu.Clock())
 	cart := NewCartridge(mmu, rom)
-	kp := NewKeypad(options.Keypad)
+	kp := NewKeypad(mmu, options.Keypad)
 
 	if options.Skipbios {
 		cpu.RunCommand(CmdUnloadBios, nil)
@@ -67,6 +67,8 @@ func (j Jibi) RunCommand(cmd Command, resp chan string) {
 func (j Jibi) Run() {
 	// metrics
 	resp := make(chan chan ClockType)
+	j.cpu.RunCommand(CmdOnInstruction, resp)
+	inst := <-resp
 	cpuClk := j.cpu.Clock()
 	j.cpu.RunCommand(CmdCmdCounter, resp)
 	cpuCmds := <-resp
@@ -102,6 +104,8 @@ func (j Jibi) Run() {
 		case <-timeout:
 			fmt.Println("timeout")
 			running = false
+		case <-inst:
+			fmt.Println(j.cpu)
 		case <-ticker.C:
 			if count >= 10.0 {
 				cpuHz *= 0.9
@@ -154,7 +158,7 @@ func (j Jibi) Run() {
 				}
 				s += fmt.Sprintf("%s\n%s\n"+
 					"   cpu: %5.2fMhz cpuCps: %8d cpuLps: %8d "+
-					"gpuFps: %8.2f gpuCps: %8d gpuLps: %8d "+
+					"gpuFps: %8.2f gpuCps: %8d gpuLps: %8d\n"+
 					" kpCps: %8d  kpLps: %8d "+
 					"\n",
 					j.cpu, j.kp,

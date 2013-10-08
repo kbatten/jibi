@@ -28,6 +28,7 @@ func (i instruction) String() string {
 // n reset
 // h and c set or reset according to operation
 func (c *Cpu) addWordR(a Worder, b Byter) Word {
+	fmt.Println(c.str())
 	panic("inst")
 	h := a.High()
 	l := a.Low()
@@ -68,6 +69,7 @@ func (c *Cpu) xor(a, b Byter) Byte {
 }
 
 func (c *Cpu) and(a, b Byter) Byte {
+	fmt.Println(c.str())
 	panic("inst")
 	r := a.Byte() & b.Byte()
 	c.f.reset()
@@ -79,7 +81,6 @@ func (c *Cpu) and(a, b Byter) Byte {
 }
 
 func (c *Cpu) or(a, b Byter) Byte {
-	panic("inst")
 	r := a.Byte() | b.Byte()
 	c.f.reset()
 	if r == 0 {
@@ -121,6 +122,7 @@ func (c *Cpu) dec(a Byter) Byte {
 }
 
 func (c *Cpu) sbc(a, b Byter) Byte {
+	fmt.Println(c.str())
 	panic("inst")
 	carry := Byte(0)
 	if c.f.getFlag(flagC) {
@@ -158,7 +160,6 @@ func (c *Cpu) sub(a, b Byter) Byte {
 }
 
 func (c *Cpu) adc(a, b Byter) Byte {
-	panic("inst")
 	carry := Byte(0)
 	if c.f.getFlag(flagC) {
 		carry = 1
@@ -178,7 +179,6 @@ func (c *Cpu) adc(a, b Byter) Byte {
 }
 
 func (c *Cpu) add(a, b Byter) Byte {
-	panic("inst")
 	r := a.Byte() + b.Byte()
 	c.f.reset()
 	if r == 0 {
@@ -195,7 +195,6 @@ func (c *Cpu) add(a, b Byter) Byte {
 
 // rotate right through carry (yes, naming is odd)
 func (c *Cpu) rr(n Byter) Byte {
-	panic("untested")
 	r := n.Byte() >> 1
 	if c.f.getFlag(flagC) { // old carry is bit 7
 		r += 1 << 7
@@ -228,8 +227,7 @@ func (c *Cpu) rl(n Byter) Byte {
 
 // rotate left, old bit 7 to carry
 func (c *Cpu) rlc(n Byter) Byte {
-	panic("untested")
-	r := n.Byte()>>7 + n.Byte()<<1
+	r := n.Byte()>>7 | n.Byte()<<1
 	c.f.reset()
 	if r == 0 {
 		c.f.setFlag(flagZ)
@@ -265,6 +263,7 @@ func (c *Cpu) jp(addr Worder) {
 }
 
 func (c *Cpu) callF(f Byte, addr Worder) {
+	fmt.Println(c.str())
 	panic("untested")
 	if c.f.getFlag(f) == true {
 		c.call(addr)

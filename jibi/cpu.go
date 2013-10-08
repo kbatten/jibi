@@ -40,6 +40,7 @@ type Cpu struct {
 	zero   []Byte
 	iflags Byte
 	ie     Byte
+	tma    Byte
 
 	// internal state
 	biosFinished bool
@@ -70,7 +71,7 @@ func NewCpu(mmu *Mmu, bios []Byte) *Cpu {
 	biosFinished := true
 	if len(bios) > 0 {
 		biosFinished = false
-		biosN := make([]Byte, 0xFF)
+		biosN := make([]Byte, 0x100)
 		copy(biosN, bios)
 		bios = biosN
 	}
@@ -108,6 +109,7 @@ func NewCpu(mmu *Mmu, bios []Byte) *Cpu {
 		mmu.handleLocalMemory(CpuMemoryHandler{0xFF80, 0xFFFE, cpu})
 		mmu.handleLocalMemory(CpuMemoryHandler{AddrIE, AddrIE, cpu})
 		mmu.handleLocalMemory(CpuMemoryHandler{AddrIF, AddrIF, cpu})
+		mmu.handleLocalMemory(CpuMemoryHandler{AddrTMA, AddrTMA, cpu})
 	}
 	return cpu
 }
@@ -142,12 +144,10 @@ func (c *Cpu) cmdString(resp interface{}) {
 
 func (c *Cpu) str() string {
 	return fmt.Sprintf(`%s
-a:%s b:%s c:%s d:%s e:%s f:%s h:%s l:%s
-af:0x%04X bc:0x%04X de:0x%04X hl:0x%04X sp:%s pc:%s
-%s`,
-		c.inst, c.a, c.b, c.c, c.d, c.e, c.f, c.h, c.l,
-		c.a.Word(), c.b.Word(), c.d.Word(), c.h.Word(), c.sp, c.pc,
-		c.f.flagsString())
+a:%s f:%s b:%s c:%s d:%s e:%s h:%s l:%s sp:%s pc:%s
+ime:%d ie:0x%02X if:0x%02X %s`,
+		c.inst, c.a, c.f, c.b, c.c, c.d, c.e, c.h, c.l, c.sp, c.pc,
+		c.ime, c.ie, c.iflags, c.f.flagsString())
 }
 
 func (c *Cpu) String() string {
@@ -174,13 +174,13 @@ func (c *Cpu) ReadLocalByteAt(addr Worder) Byte {
 	if !c.biosFinished && a <= 0xFF {
 		return c.bios[addr.Word()]
 	} else if 0xFF80 <= a && a <= 0xFFFE {
-		return c.zero[addr.Word()-0xFF80]
+		return c.zero[a-0xFF80]
 	} else if AddrIF == a {
-		panic("IF")
 		return c.iflags
 	} else if AddrIE == a {
-		panic("IE")
 		return c.ie
+	} else if AddrTMA == a {
+		return c.tma
 	} else if c.mmu.isLocalMemory(addr) {
 		return c.mmu.readLocalByte(addr)
 	}
@@ -190,15 +190,17 @@ func (c *Cpu) ReadLocalByteAt(addr Worder) Byte {
 func (c *Cpu) readByte(addr Worder) Byte {
 	a := addr.Word()
 	if !c.biosFinished && a <= 0xFF {
-		return c.bios[addr.Word()]
+		return c.bios[a]
 	} else if 0xFF80 <= a && a <= 0xFFFE {
-		return c.zero[addr.Word()-0xFF80]
+		return c.zero[a-0xFF80]
 	} else if AddrIF == a {
 		panic("IF")
 		return c.iflags
 	} else if AddrIE == a {
 		panic("IE")
 		return c.ie
+	} else if AddrTMA == a {
+		return c.tma
 	} else if c.mmu.isLocalMemory(addr) {
 		return c.mmu.readLocalByte(addr)
 	}
@@ -210,13 +212,13 @@ func (c *Cpu) readByte(addr Worder) Byte {
 func (c *Cpu) WriteLocalByteAt(addr Worder, b Byter) {
 	a := addr.Word()
 	if 0xFF80 <= a && a <= 0xFFFE {
-		c.zero[addr.Word()-0xFF80] = b.Byte()
+		c.zero[a-0xFF80] = b.Byte()
 	} else if AddrIF == a {
-		panic("IF")
 		c.iflags = b.Byte()
 	} else if AddrIE == a {
-		panic("IE")
 		c.ie = b.Byte()
+	} else if AddrTMA == a {
+		c.tma = b.Byte()
 	} else if c.mmu.isLocalMemory(addr) {
 		c.mmu.writeLocalByte(addr, b)
 	}
@@ -226,13 +228,13 @@ func (c *Cpu) WriteLocalByteAt(addr Worder, b Byter) {
 func (c *Cpu) writeByte(addr Worder, b Byter) {
 	a := addr.Word()
 	if 0xFF80 <= a && a <= 0xFFFE {
-		c.zero[addr.Word()-0xFF80] = b.Byte()
+		c.zero[a-0xFF80] = b.Byte()
 	} else if AddrIF == a {
-		panic("IF")
 		c.iflags = b.Byte()
 	} else if AddrIE == a {
-		panic("IE")
 		c.ie = b.Byte()
+	} else if AddrTMA == a {
+		c.tma = b.Byte()
 	} else if c.mmu.isLocalMemory(addr) {
 		c.mmu.writeLocalByte(addr, b)
 	} else {
@@ -276,9 +278,6 @@ func (c *Cpu) fetch() {
 }
 
 func (c *Cpu) execute() {
-	if !c.biosFinished && c.pc == 0x0100 {
-		c.biosFinished = true
-	}
 	if cmd, ok := commandTable[c.inst.o]; ok {
 		cmd.f(c)
 		c.t += cmd.t
@@ -302,6 +301,9 @@ func (c *Cpu) step(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32
 	// reset clocks
 	c.m = 0
 	c.t = 0
+	if !c.biosFinished && c.pc == 0x0100 {
+		c.biosFinished = true
+	}
 	c.interrupt() // handle interrupts
 	c.fetch()     // load next instruction into c.inst
 	c.execute()   // execute c.inst instruction

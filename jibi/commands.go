@@ -29,7 +29,6 @@ func (o opcode) String() string {
 var commandTable = map[opcode]command{
 	0x00: command{"NOP", 0, 4, func(*Cpu) {}},
 	0x01: command{"LD BC, nn", 2, 12, func(c *Cpu) {
-		panic("inst")
 		c.c.set(c.inst.p[0])
 		c.b.set(c.inst.p[1])
 	}},
@@ -38,7 +37,6 @@ var commandTable = map[opcode]command{
 		c.writeByte(c.b, c.a)
 	}},
 	0x03: command{"INC BC", 0, 8, func(c *Cpu) {
-		panic("inst")
 		c.b.setWord(c.b.Word() + 1)
 	}},
 	0x04: command{"INC B", 0, 4, func(c *Cpu) {
@@ -51,7 +49,6 @@ var commandTable = map[opcode]command{
 		c.b.set(c.inst.p[0])
 	}},
 	0x07: command{"RLCA", 0, 4, func(c *Cpu) {
-		panic("inst")
 		c.a.set(c.rlc(c.a))
 	}},
 	0x08: command{"LD (nn), SP", 2, 20, func(c *Cpu) {
@@ -60,7 +57,6 @@ var commandTable = map[opcode]command{
 	0x09: command{"", 0, 0, func(c *Cpu) {}},
 	0x0A: command{"", 0, 0, func(c *Cpu) {}},
 	0x0B: command{"DEC BC", 0, 8, func(c *Cpu) {
-		panic("inst")
 		c.b.setWord(c.b.Word() - 1)
 	}},
 	0x0C: command{"INC C", 0, 4, func(c *Cpu) {
@@ -113,7 +109,6 @@ var commandTable = map[opcode]command{
 		c.e.set(c.inst.p[0])
 	}},
 	0x1F: command{"RRA", 0, 4, func(c *Cpu) {
-		panic("inst")
 		c.a.set(c.rr(c.a))
 	}},
 	0x20: command{"JR NZ, *", 1, 8, func(c *Cpu) {
@@ -413,7 +408,6 @@ var commandTable = map[opcode]command{
 	0xA5: command{"", 0, 0, func(c *Cpu) {}},
 	0xA6: command{"", 0, 0, func(c *Cpu) {}},
 	0xA7: command{"", 0, 0, func(c *Cpu) {}},
-
 	0xA8: command{"XOR B", 0, 4, func(c *Cpu) {
 		c.a.set(c.xor(c.a, c.b))
 	}},
@@ -439,7 +433,6 @@ var commandTable = map[opcode]command{
 		c.a.set(c.xor(c.a, c.a))
 	}},
 	0xB0: command{"OR B", 0, 4, func(c *Cpu) {
-		panic("inst")
 		c.a.set(c.or(c.a, c.b))
 	}},
 	0xB1: command{"OR C", 0, 4, func(c *Cpu) {
@@ -506,6 +499,9 @@ var commandTable = map[opcode]command{
 		c.jp(c.pop())
 	}},
 	0xCA: command{"", 0, 0, func(c *Cpu) {}},
+	0xCB01: command{"RLC C", 0, 8, func(c *Cpu) {
+		c.c.set(c.rlc(c.c))
+	}},
 	0xCB11: command{"RL C", 0, 8, func(c *Cpu) {
 		c.c.set(c.rl(c.c))
 	}},
@@ -566,7 +562,6 @@ var commandTable = map[opcode]command{
 		c.a.set(c.readByte(Word(0xFF00 + uint16(c.c.Byte()))))
 	}},
 	0xF3: command{"DI", 0, 4, func(c *Cpu) {
-		panic("DI")
 		c.ime = Bit(0)
 	}},
 	0xF4: command{"", 0, 0, func(c *Cpu) {}},

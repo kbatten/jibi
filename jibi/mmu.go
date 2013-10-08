@@ -25,6 +25,8 @@ func NewMmu() *Mmu {
 		CpuMemoryHandler{0xC000, 0xDFFF, workingRam},  // internal
 		CpuMemoryHandler{0xE000, 0xFDFF, workingRam},  // echo
 		CpuMemoryHandler{0xFEA0, 0xFEFF, nilDevice{}}, // unusable
+		CpuMemoryHandler{0xFF50, 0xFF50, nilDevice{}}, // unusable, not sure why bios accesses it
+		CpuMemoryHandler{0xFF7F, 0xFF7F, nilDevice{}}, // unusable, not sure why bios accesses it
 	}
 	mmu := &Mmu{
 		nil,
@@ -94,6 +96,8 @@ func (m *Mmu) getMemoryInfo(addr Worder) (string, bool) {
 		return "Sound Mode 2 register, frequency", true
 	} else if a == 0xFF1A {
 		return "Sound Mode 3 register, Sound on/off (R/W)", true
+	} else if a == 0xFF20 {
+		return "Sound Mode 4 register, sound length (R/W)", true
 	} else if a == 0xFF21 {
 		return "Sound Mode 4 register, envelope (R/W)", true
 	} else if a == 0xFF23 {
@@ -309,24 +313,25 @@ func NewEchoRamDevice(addrA, addrB Worder, size Worder, data []Byte) EchoRamDevi
 func (r EchoRamDevice) ReadLocalByteAt(addr Worder) Byte {
 	aa := addr.Word() - r.addrA
 	ab := addr.Word() - r.addrB
-	if aa < 0 || aa > r.size {
+	if aa < r.size {
 		return r.data[aa]
-	} else if ab < 0 || ab > r.size {
+	} else if ab < r.size {
 		return r.data[ab]
 	}
-	panic("ram read out of range")
+	panic("echo ram read out of range")
 }
 
 // WriteLocalByteAt writes a single byte to the device at the specified address.
 func (r EchoRamDevice) WriteLocalByteAt(addr Worder, b Byter) {
 	aa := addr.Word() - r.addrA
 	ab := addr.Word() - r.addrB
-	if aa < 0 || aa > r.size {
+	if aa < r.size {
 		r.data[aa] = b.Byte()
-	} else if ab < 0 || ab > r.size {
+	} else if ab < r.size {
 		r.data[ab] = b.Byte()
+	} else {
+		panic("echo ram write out of range")
 	}
-	panic("ram write out of range")
 }
 
 // nil memory device
