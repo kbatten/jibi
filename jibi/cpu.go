@@ -261,7 +261,7 @@ func (cpu *Cpu) getInterrupt(ie, iflag Byte) Interrupt {
 }
 
 func (cpu *Cpu) io() {
-	iflag := cpu.mmu.ReadIoByte(AddrIF, cpu.mmuKeys)
+	iflag, _ := cpu.mmu.ReadIoByte(AddrIF, cpu.mmuKeys)
 	if cpu.ime == 0 {
 		iflag = 0 // mask all interrupts
 	} else {

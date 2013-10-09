@@ -1,7 +1,7 @@
 package jibi
 
 import (
-//	"fmt"
+	// "fmt"
 	"os"
 	"os/exec"
 	"time"
@@ -84,14 +84,18 @@ func NewKeypad(mmu *Mmu, runSetup bool) *Keypad {
 	}
 	commander := NewCommander("keypad")
 	keys := map[Key]valueChan{
-		KeyUp:     valueChan{1, make(chan bool)},
-		KeyDown:   valueChan{1, make(chan bool)},
-		KeyLeft:   valueChan{1, make(chan bool)},
-		KeyRight:  valueChan{1, make(chan bool)},
-		KeyB:      valueChan{1, make(chan bool)},
-		KeyA:      valueChan{1, make(chan bool)},
-		KeySelect: valueChan{1, make(chan bool)},
-		KeyStart:  valueChan{1, make(chan bool)},
+		// A buffer of 1 is needed because we may get a keydown before the
+		// keyup for that key has been processed. The write to the chan is
+		// non-blocking so more than 1 keydown will simply be ignored, which
+		// is the desired behavior anyway.
+		KeyUp:     valueChan{1, make(chan bool, 1)},
+		KeyDown:   valueChan{1, make(chan bool, 1)},
+		KeyLeft:   valueChan{1, make(chan bool, 1)},
+		KeyRight:  valueChan{1, make(chan bool, 1)},
+		KeyB:      valueChan{1, make(chan bool, 1)},
+		KeyA:      valueChan{1, make(chan bool, 1)},
+		KeySelect: valueChan{1, make(chan bool, 1)},
+		KeyStart:  valueChan{1, make(chan bool, 1)},
 	}
 	mmuKeys := AddressKeys(0)
 	mmuKeys = mmu.LockAddr(AddrP1, mmuKeys)
@@ -144,10 +148,19 @@ func (k *Keypad) cmdKeyDown(data interface{}) {
 	if key, ok := data.(Key); !ok {
 		panic("invalid command response type")
 	} else {
-		if k.keys[key].v == 0 {
+		if k.keys[key].v == 1 { // inputs are pulled high
 			k.keys[key] = valueChan{0, k.keys[key].c}
 			c := k.keys[key].c
 			go func() {
+				// clear channel
+				for loop := true; loop; {
+					select {
+					case <-c:
+					default:
+						loop = false
+					}
+				}
+				// loop while we get at least one keypress
 				for gotOne := true; gotOne; {
 					timeout := time.After(200 * time.Millisecond)
 					gotOne = false
@@ -162,9 +175,14 @@ func (k *Keypad) cmdKeyDown(data interface{}) {
 				}
 				k.RunCommand(CmdKeyUp, data)
 			}()
-			//k.mmu.SetInterrupt(InterruptKeypad, k.mmuKeys)
+			k.mmu.SetInterrupt(InterruptKeypad, k.mmuKeys)
 		} else {
-			k.keys[key].c <- true
+			// this chan has a buffer of 1, so even though the write is
+			// non-blocking one keypress can be queued.
+			select {
+			case k.keys[key].c <- true:
+			default:
+			}
 		}
 	}
 }
@@ -178,8 +196,7 @@ func (k *Keypad) cmdKeyUp(data interface{}) {
 }
 
 func (k *Keypad) cmdKeyCheck(data interface{}) {
-/*
-	b := k.mmu.ReadIoByte(AddrP1, k.mmuKeys)
+	b, _ := k.mmu.ReadIoByte(AddrP1, k.mmuKeys)
 	p15 := (b & 0x20) >> 5
 	p14 := (b & 0x10) >> 4
 
@@ -188,9 +205,7 @@ func (k *Keypad) cmdKeyCheck(data interface{}) {
 		(p14&k.keys[KeyUp].v|p15&k.keys[KeySelect].v)<<2 +
 		(p14&k.keys[KeyDown].v|p15&k.keys[KeyStart].v)<<3
 
-	fmt.Println(p1310)
-*/
-	//k.writeByte(AddrP1, p1310)
+	k.writeByte(AddrP1, p1310)
 }
 
 func (kp *Keypad) readByte(addr Worder) Byte {

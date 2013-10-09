@@ -110,7 +110,7 @@ type Commander struct {
 // NewCommander returns a new named Commander object.
 func NewCommander(name string) *Commander {
 	c := &Commander{name,
-		make(chan CommandResponse, 2), // HACK
+		make(chan CommandResponse, 1024), // HACK
 		nil, nil, false, false, nil,
 	}
 	return c

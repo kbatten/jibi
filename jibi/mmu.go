@@ -14,6 +14,7 @@ const (
 	AddrOamEnd Word = 0xFEA0
 
 	AddrP1  Word = 0xFF00
+	AddrDIV Word = 0xFF04
 	AddrTMA Word = 0xFF06
 	AddrIF  Word = 0xFF0F
 
@@ -50,8 +51,8 @@ type Mmu struct {
 	ie      Byte
 
 	// memory mapped io
-	ioIF mmio
-	ioP1 mmio
+	ioIF *mmio
+	ioP1 *mmio
 
 	// memory locks
 	locks []*sync.Mutex
@@ -75,8 +76,8 @@ func NewMmu(cart *Cartridge) *Mmu {
 		vram:    make([]Byte, 0x2000),
 		ram:     make([]Byte, 0x2000),
 		oam:     make([]Byte, 0xA0),
-		ioIF:    mmio{lock: new(sync.Mutex)},
-		ioP1:    mmio{lock: new(sync.Mutex)},
+		ioIF:    newMmio(AddrIF),
+		ioP1:    newMmio(AddrP1),
 		gpuregs: make([]Byte, 12),
 		zero:    make([]Byte, 0x100),
 		locks:   locks,
@@ -278,7 +279,7 @@ func (m *Mmu) WriteByteAt(addr Worder, b Byter, ak AddressKeys) {
 	}
 }
 
-func (m *Mmu) ReadIoByte(addr Worder, ak AddressKeys) Byte {
+func (m *Mmu) ReadIoByte(addr Worder, ak AddressKeys) (Byte, bool) {
 	blk, _ := m.selectAddressBlock(addr, "write")
 	owner := addressBlock(ak)&blk == blk
 	if blk == abP1 {
@@ -302,8 +303,18 @@ func (m *Mmu) getAddressInfo(addr Worder) (string, bool) {
 		return "Serial transfer data (R/W)", true
 	} else if a == 0xFF02 {
 		return "SIO control (R/W)", true
+	} else if a == 0xFF03 {
+		return "no clue", true
+	} else if a == 0xFF04 {
+		return "DIV", true // TODO: priority
+	} else if a == 0xFF05 {
+		return "TIMA", true // TODO: priority
 	} else if a == 0xFF06 {
 		return "TMA", true // TODO: priority
+	} else if a == 0xFF07 {
+		return "TAC", true // TODO: priority
+	} else if 0xFF08 <= a && a <= 0xFF0E {
+		return "no clue", true
 	} else if a == 0xFF10 {
 		return "Sound Mode 1 register, Sweep register (R/W)", true
 	} else if a == 0xFF11 {
@@ -356,7 +367,13 @@ type mmio struct {
 	lock   *sync.Mutex
 }
 
-func (m mmio) readByte(owner bool) Byte {
+func newMmio(addr Worder) *mmio {
+	m := &mmio{addr: addr.Word(),
+		lock: new(sync.Mutex)}
+	return m
+}
+
+func (m *mmio) readByte(owner bool) Byte {
 	if owner {
 		return m.value
 	}
@@ -365,7 +382,7 @@ func (m mmio) readByte(owner bool) Byte {
 	return m.read
 }
 
-func (m mmio) writeByte(b Byter, owner bool) {
+func (m *mmio) writeByte(b Byter, owner bool) {
 	if owner {
 		m.lock.Lock()
 		defer m.lock.Unlock()
@@ -378,19 +395,20 @@ func (m mmio) writeByte(b Byter, owner bool) {
 		m.lock.Lock()
 		defer m.lock.Unlock()
 		if m.queued {
-			panic(fmt.Sprintf("overwritten io write: 0x%04X", m.addr))
+			//panic(fmt.Sprintf("overwritten io write: 0x%04X", m.addr))
 		}
 		m.queued = true
 		m.write = b.Byte()
 	}
 }
 
-func (m mmio) readIoByte(owner bool) Byte {
+func (m *mmio) readIoByte(owner bool) (Byte, bool) {
 	if owner {
 		m.lock.Lock()
 		defer m.lock.Unlock()
+		q := m.queued
 		m.queued = false
-		return m.write
+		return m.write, q
 	}
 	panic(fmt.Sprintf("unhandled io read: 0x%04X", m.addr))
 }
