@@ -2,84 +2,308 @@ package jibi
 
 import (
 	"fmt"
+	"sync"
+)
+
+// A list of all the special memory addresses.
+const (
+	AddrRom    Word = 0x0000
+	AddrVRam   Word = 0x8000
+	AddrRam    Word = 0xC000
+	AddrOam    Word = 0xFE00
+	AddrOamEnd Word = 0xFEA0
+
+	AddrP1  Word = 0xFF00
+	AddrTMA Word = 0xFF06
+	AddrIF  Word = 0xFF0F
+
+	AddrGpuRegs    Word = 0xFF40
+	AddrLCDC       Word = 0xFF40
+	AddrSTAT       Word = 0xFF41
+	AddrSCY        Word = 0xFF42
+	AddrSCX        Word = 0xFF43
+	AddrLY         Word = 0xFF44
+	AddrLYC        Word = 0xFF45
+	AddrDMA        Word = 0xFF46
+	AddrBGP        Word = 0xFF47
+	AddrOBP0       Word = 0xFF48
+	AddrOBP1       Word = 0xFF49
+	AddrWY         Word = 0xFF4A
+	AddrWX         Word = 0xFF4B
+	AddrGpuRegsEnd Word = 0xFF4C
+
+	AddrZero Word = 0xFF80
+	AddrIE   Word = 0xFFFF
 )
 
 // An Mmu is the memory management unit. Its purpose is to dispatch read and
 // write requeststo the appropriate module (cpu, gpu, etc) based on the memory
 // address. The Mmu is controlled by the cpu.
 type Mmu struct {
-	// memory
-	mhandlers  []MemoryHandler
-	cmhandlers []CpuMemoryHandler
+	// memory blocks
+	rom     []Byte
+	vram    []Byte
+	ram     []Byte
+	oam     []Byte
+	gpuregs []Byte
+	zero    []Byte
+	ie      Byte
+
+	// memory mapped io
+	ioIF mmio
+	ioP1 mmio
+
+	// memory locks
+	locks []*sync.Mutex
 
 	// internal state
-	cpu    MemoryCommander
-	rwChan chan Byte
+	kp *Keypad
 }
 
 // NewMmu creates a new Mmu with an optional bios that replaces 0x0000-0x00FF.
-func NewMmu() *Mmu {
-	// add ram only handlers
-	workingRam := NewEchoRamDevice(Word(0xC000), Word(0xE000), Word(0x2000), nil)
-	cmhandlers := []CpuMemoryHandler{
-		CpuMemoryHandler{0xC000, 0xDFFF, workingRam},  // internal
-		CpuMemoryHandler{0xE000, 0xFDFF, workingRam},  // echo
-		CpuMemoryHandler{0xFEA0, 0xFEFF, nilDevice{}}, // unusable
-		CpuMemoryHandler{0xFF50, 0xFF50, nilDevice{}}, // unusable, not sure why bios accesses it
-		CpuMemoryHandler{0xFF7F, 0xFF7F, nilDevice{}}, // unusable, not sure why bios accesses it
+func NewMmu(cart *Cartridge) *Mmu {
+	var rom []Byte
+	if cart != nil {
+		rom = cart.Rom
+	}
+	locks := make([]*sync.Mutex, abLast+1)
+	for i := uint16(1); i <= uint16(abLast); i = i << 1 {
+		locks[i] = new(sync.Mutex)
 	}
 	mmu := &Mmu{
-		nil,
-		cmhandlers,
-		nil,
-		make(chan Byte, 1), // HACK
+		rom:     rom,
+		vram:    make([]Byte, 0x2000),
+		ram:     make([]Byte, 0x2000),
+		oam:     make([]Byte, 0xA0),
+		ioIF:    mmio{lock: new(sync.Mutex)},
+		ioP1:    mmio{lock: new(sync.Mutex)},
+		gpuregs: make([]Byte, 12),
+		zero:    make([]Byte, 0x100),
+		locks:   locks,
 	}
 	return mmu
 }
 
-// A LocalMemoryDevice provides random 16bit read and write access that will
-// run on the cpu goroutine.
-type LocalMemoryDevice interface {
-	ReadLocalByteAt(Worder) Byte
-	WriteLocalByteAt(Worder, Byter)
+type addressBlock uint16
+type AddressKeys uint16
+
+const (
+	abNil addressBlock = iota
+	abRom addressBlock = 1 << iota
+	abVRam
+	abRam
+	abOam
+	abP1
+	abIF
+	abGpuRegs
+	abZero
+	abIE
+	abLast = abIE
+)
+
+func (a addressBlock) String() string {
+	switch a {
+	case abNil:
+		return "abNil"
+	case abRom:
+		return "abRom"
+	case abVRam:
+		return "abVRam"
+	case abRam:
+		return "abRam"
+	case abOam:
+		return "abOam"
+	case abIF:
+		return "abIF"
+	case abGpuRegs:
+		return "abGpuRegs"
+	case abZero:
+		return "abZero"
+	case abIE:
+		return "abIE"
+	}
+	return "abUNKNOWN"
 }
 
-// A CpuMemoryHandler holds the info needed to map an address to a
-// a CpuMemoryDevice.
-type CpuMemoryHandler struct {
-	start Word
-	end   Word
-	dev   LocalMemoryDevice
+func (m *Mmu) SetKeypad(kp *Keypad) {
+	m.kp = kp
 }
 
-// A MemoryDevice provides random 16bit read and write access.
-type MemoryDevice interface {
-	ReadByteAt(Worder, chan Byte)
-	WriteByteAt(Worder, Byter)
+func (m *Mmu) selectAddressBlock(addr Worder, rw string) (addressBlock, Word) {
+	a := addr.Word()
+	if a < AddrVRam {
+		return abRom, 0
+	} else if AddrVRam <= a && a < AddrRam {
+		return abVRam, AddrVRam
+	} else if AddrRam <= a && a < AddrOam {
+		return abRam, AddrRam
+	} else if AddrOam <= a && a < AddrOamEnd {
+		return abOam, AddrOam
+	} else if AddrP1 == a {
+		return abP1, AddrP1
+	} else if AddrIF == a {
+		return abIF, AddrIF
+	} else if AddrGpuRegs <= a && a < AddrGpuRegsEnd {
+		return abGpuRegs, AddrGpuRegs
+	} else if AddrZero <= a && a < AddrIE {
+		return abZero, AddrZero
+	} else if AddrIE == a {
+		return abIE, AddrIE
+	}
+
+	u, v := m.getAddressInfo(addr)
+	if !v {
+		if rw == "" {
+			rw = "access"
+		}
+		panic(fmt.Sprintf("unhandled memory %s: 0x%04X - %s", rw, a, u))
+	}
+	return abNil, 0
 }
 
-// A MemoryHandler holds the info needed to map an address to a MemoryDevice.
-type MemoryHandler struct {
-	start Word
-	end   Word
-	dev   MemoryDevice
+// LockAddr gets a lock for an address if not already in the provided
+// AddressKeys and appends it and returns this new key set.
+func (m *Mmu) LockAddr(addr Worder, ak AddressKeys) AddressKeys {
+	blk, _ := m.selectAddressBlock(addr, "lock")
+	if addressBlock(ak)&blk == blk {
+		// already have the key
+		return ak
+	}
+	m.locks[blk].Lock()
+	return ak | AddressKeys(blk)
 }
 
-func (m *Mmu) connectCpu(cpu MemoryCommander) {
-	m.cpu = cpu
+func (m *Mmu) UnlockAddr(addr Worder, ak AddressKeys) AddressKeys {
+	blk, _ := m.selectAddressBlock(addr, "unlock")
+	if addressBlock(ak)&blk != blk {
+		// don't have the key
+		return ak
+	}
+	m.locks[blk].Unlock()
+	return ak & AddressKeys(blk^0xFFFF)
+}
+
+func (m *Mmu) ReadByteAt(addr Worder, ak AddressKeys) Byte {
+	blk, start := m.selectAddressBlock(addr, "read")
+	owner := addressBlock(ak)&blk == blk
+	if blk == abRom {
+		if owner {
+			return m.rom[addr.Word()-start]
+		}
+	}
+	if blk == abVRam {
+		if owner {
+			return m.vram[addr.Word()-start]
+		}
+	} else if blk == abRam {
+		if owner {
+			return m.ram[(addr.Word()-start)&0x1FFF]
+		}
+	} else if blk == abP1 {
+		return m.ioP1.readByte(owner)
+	} else if blk == abIF {
+		return m.ioIF.readByte(owner)
+	} else if blk == abGpuRegs {
+		if owner {
+			return m.gpuregs[addr.Word()-start]
+		}
+	} else if blk == abZero {
+		if owner {
+			return m.zero[addr.Word()-start]
+		}
+	} else if blk == abIE {
+		if owner {
+			return m.ie
+		}
+	}
+	if !owner {
+		panic(fmt.Sprintf("unauthorized read: 0x%04X", addr.Word()))
+	}
+	if u, v := m.getAddressInfo(addr); !v {
+		panic(fmt.Sprintf("unhandled memory read: 0x%04X - %s", addr.Word(), u))
+	}
+	return 0
+}
+
+func (m *Mmu) WriteByteAt(addr Worder, b Byter, ak AddressKeys) {
+	blk, start := m.selectAddressBlock(addr, "write")
+	owner := addressBlock(ak)&blk == blk
+	if blk == abRom {
+		return
+	} else if blk == abVRam {
+		if owner {
+			m.vram[addr.Word()-start] = b.Byte()
+			return
+		}
+	} else if blk == abRam {
+		if owner {
+			m.ram[(addr.Word()-start)&0x1FFF] = b.Byte()
+			return
+		}
+	} else if blk == abOam {
+		if owner {
+			m.oam[addr.Word()-start] = b.Byte()
+			return
+		}
+	} else if blk == abP1 {
+		m.ioP1.writeByte(b, owner)
+		if !owner {
+			m.kp.RunCommand(CmdKeyCheck, nil)
+		}
+		return
+	} else if blk == abIF {
+		m.ioIF.writeByte(b, owner)
+		return
+	} else if blk == abGpuRegs {
+		if owner {
+			m.gpuregs[addr.Word()-start] = b.Byte()
+			return
+		}
+	} else if blk == abZero {
+		if owner {
+			m.zero[addr.Word()-start] = b.Byte()
+			return
+		}
+	} else if blk == abIE {
+		if owner {
+			m.ie = b.Byte()
+			return
+		}
+	}
+	if !owner {
+		panic(fmt.Sprintf("unauthorized write: 0x%04X 0x%02X", addr.Word(), b.Byte()))
+	}
+	if u, v := m.getAddressInfo(addr); !v {
+		panic(fmt.Sprintf("unhandled memory write: 0x%04X - %s", addr.Word(), u))
+	}
+}
+
+func (m *Mmu) ReadIoByte(addr Worder, ak AddressKeys) Byte {
+	blk, _ := m.selectAddressBlock(addr, "write")
+	owner := addressBlock(ak)&blk == blk
+	if blk == abP1 {
+		return m.ioP1.readIoByte(owner)
+	} else if blk == abIF {
+		return m.ioIF.readIoByte(owner)
+	}
+	panic(fmt.Sprintf("unhandled queued write: 0x%04X", addr.Word()))
 }
 
 // incomplete, used for debugging
-func (m *Mmu) getMemoryInfo(addr Worder) (string, bool) {
+func (m *Mmu) getAddressInfo(addr Worder) (string, bool) {
 	a := addr.Word()
 	if 0x9C00 <= a && a <= 0x9FFF {
 		return "Background Map Data 2", false
+	} else if 0xFEA0 <= a && a <= 0xFEFF {
+		return "unusable memory", true
 	} else if a == 0xFF00 {
 		return "Register for reading joy pad info and determining system type. (R/W)", false
 	} else if a == 0xFF01 {
 		return "Serial transfer data (R/W)", true
 	} else if a == 0xFF02 {
 		return "SIO control (R/W)", true
+	} else if a == 0xFF06 {
+		return "TMA", true // TODO: priority
 	} else if a == 0xFF10 {
 		return "Sound Mode 1 register, Sweep register (R/W)", true
 	} else if a == 0xFF11 {
@@ -108,243 +332,65 @@ func (m *Mmu) getMemoryInfo(addr Worder) (string, bool) {
 		return "Selection of Sound output terminal (R/W)", true
 	} else if a == 0xFF26 {
 		return "Sound on/off (R/W)", true
+	} else if a == 0xFF47 {
+		return "BGP", false
+	} else if 0xFF4D <= a && a <= 0xFF7F {
+		return "GBC", true
+	} else if a == 0xFFFF {
+		return "IE", false
 	}
 	return "unknown", false
-
 }
 
-func (m *Mmu) selectLocalMemoryDevice(addr Worder) LocalMemoryDevice {
-	a := addr.Word()
-	for _, mh := range m.cmhandlers {
-		if mh.start <= a && a <= mh.end {
-			return mh.dev
+// memory mapped io
+type mmio struct {
+	addr Word
+
+	// accessed by owner
+	value Byte
+
+	// accessed through lock
+	read   Byte
+	write  Byte
+	queued bool
+	lock   *sync.Mutex
+}
+
+func (m mmio) readByte(owner bool) Byte {
+	if owner {
+		return m.value
+	}
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	return m.read
+}
+
+func (m mmio) writeByte(b Byter, owner bool) {
+	if owner {
+		m.lock.Lock()
+		defer m.lock.Unlock()
+		m.value = b.Byte()
+		m.read = m.value
+		if !m.queued {
+			m.write = m.value
 		}
-	}
-	u, v := m.getMemoryInfo(addr)
-	if !v {
-		panic(fmt.Sprintf("unhandled memory access: 0x%04X - %s", a, u))
-	}
-	return nilDevice{}
-}
-
-func (m *Mmu) selectMemoryDevice(addr Worder) MemoryDevice {
-	a := addr.Word()
-	for _, mh := range m.mhandlers {
-		if mh.start <= a && a <= mh.end {
-			return mh.dev
+	} else {
+		m.lock.Lock()
+		defer m.lock.Unlock()
+		if m.queued {
+			panic(fmt.Sprintf("overwritten io write: 0x%04X", m.addr))
 		}
-	}
-	u, v := m.getMemoryInfo(addr)
-	if !v {
-		panic(fmt.Sprintf("unhandled memory access: 0x%04X - %s", a, u))
-	}
-	return nilDevice{}
-}
-
-// A ReadByteAtReq holds the info needed to read a byte from a MemoryCommander.
-type ReadByteAtReq struct {
-	addr Word
-	b    chan Byte
-}
-
-// ReadByteAt reads a single byte from the mmu at the specified address into
-// the provided channel.
-func (m *Mmu) ReadByteAt(addr Worder, b chan Byte) {
-	m.cpu.ReadByteAt(addr, b)
-}
-
-// A WriteByteAtReq holds the info needed to read a byte from a
-// MemoryCommander.
-type WriteByteAtReq struct {
-	addr Word
-	b    Byte
-}
-
-// WriteByteAt writes a single byte to the mmu at the specified address.
-func (m *Mmu) WriteByteAt(addr Worder, b Byter) {
-	m.cpu.WriteByteAt(addr, b)
-}
-
-func (m *Mmu) isLocalMemory(addr Worder) bool {
-	for _, mh := range m.cmhandlers {
-		if mh.start <= addr.Word() && addr.Word() <= mh.end {
-			return true
-		}
-	}
-	return false
-}
-
-func (m *Mmu) readLocalByte(addr Worder) Byte {
-	md := m.selectLocalMemoryDevice(addr)
-	return md.ReadLocalByteAt(addr)
-}
-
-func (m *Mmu) writeLocalByte(addr Worder, b Byter) {
-	md := m.selectLocalMemoryDevice(addr)
-	md.WriteLocalByteAt(addr, b)
-}
-
-func (m *Mmu) readRemoteByte(addr Worder) Byte {
-	md := m.selectMemoryDevice(addr)
-	md.ReadByteAt(addr, m.rwChan)
-	return <-m.rwChan
-}
-
-func (m *Mmu) writeRemoteByte(addr Worder, b Byter) {
-	md := m.selectMemoryDevice(addr)
-	md.WriteByteAt(addr, b)
-}
-
-// HandleMemory maps a start and end address to a MemoryDevice.
-func (m *Mmu) HandleMemory(start, end Word, md MemoryDevice) {
-	m.cpu.RunCommand(CmdHandleMemory, MemoryHandler{start, end, md})
-}
-
-// HandleCpuMemory maps a start and end address to a LocalMemoryDevice. This
-// device's memory access is run on the cpu goroutine.
-func (m *Mmu) HandleCpuMemory(start, end Word, md LocalMemoryDevice) {
-	m.cpu.RunCommand(CmdHandleCpuMemory, CpuMemoryHandler{start, end, md})
-}
-
-func (m *Mmu) cmdHandleCpuMemory(resp interface{}) {
-	if v, ok := resp.(CpuMemoryHandler); !ok {
-		panic("invalid command response type")
-	} else {
-		m.handleLocalMemory(v)
+		m.queued = true
+		m.write = b.Byte()
 	}
 }
 
-func (m *Mmu) cmdHandleMemory(resp interface{}) {
-	if v, ok := resp.(MemoryHandler); !ok {
-		panic("invalid command response type")
-	} else {
-		m.handleMemory(v)
+func (m mmio) readIoByte(owner bool) Byte {
+	if owner {
+		m.lock.Lock()
+		defer m.lock.Unlock()
+		m.queued = false
+		return m.write
 	}
+	panic(fmt.Sprintf("unhandled io read: 0x%04X", m.addr))
 }
-
-func (m *Mmu) handleMemory(mh MemoryHandler) {
-	m.mhandlers = append(m.mhandlers, mh)
-}
-
-func (m *Mmu) handleLocalMemory(mh CpuMemoryHandler) {
-	m.cmhandlers = append(m.cmhandlers, mh)
-}
-
-// A RomDevice is a basic rom MemoryDevice.
-type RomDevice struct {
-	data []Byte
-	addr Word
-	size Word
-}
-
-// NewRomDevice creates a RomDevice that handles from `addr` to `addr + size`.
-// The devices is initialized with `data` if provided. All operations run on
-// the callers goroutine.
-func NewRomDevice(addr Worder, size Worder, data []Byte) RomDevice {
-	d := make([]Byte, size.Word())
-	copy(d, data)
-	return RomDevice{d, addr.Word(), size.Word()}
-}
-
-// ReadLocalByteAt reads a single byte from the device at the specified address.
-func (r RomDevice) ReadLocalByteAt(addr Worder) Byte {
-	a := addr.Word() - r.addr
-	if a < 0 || a > r.size {
-		panic("rom read out of range")
-	}
-	return r.data[a]
-}
-
-// WriteLocalByteAt does nothing.
-func (r RomDevice) WriteLocalByteAt(Worder, Byter) {}
-
-// A RamDevice is a basic ram MemoryDevice.
-type RamDevice struct {
-	data []Byte
-	addr Word
-	size Word
-}
-
-// NewRamDevice creates a RamDevice that handles from `addr` to `addr + size`.
-// The devices is initialized with `data` if provided. All operations run on
-// the callers goroutine.
-func NewRamDevice(addr Worder, size Worder, data []Byte) RamDevice {
-	d := make([]Byte, size.Word())
-	copy(d, data)
-	return RamDevice{d, addr.Word(), size.Word()}
-}
-
-// ReadByteAt reads a single byte from the device at the specified address.
-func (r RamDevice) ReadByteAt(addr Worder, b chan Byte) {
-	a := addr.Word() - r.addr
-	if a < 0 || a > r.size {
-		panic("ram read out of range")
-	}
-	b <- r.data[a]
-}
-
-// WriteByteAt writes a single byte to the device at the specified address.
-func (r RamDevice) WriteByteAt(addr Worder, b Byter) {
-	a := addr.Word() - r.addr
-	if a < 0 || a > r.size {
-		panic(fmt.Sprintf("ram write out of range 0x%04X 0x%02X", addr.Word(), b.Byte()))
-	}
-	r.data[a] = b.Byte()
-}
-
-// An EchoRamDevice is a ram MemoryDevice that can be accessed from two
-// seperate starting addresses.
-type EchoRamDevice struct {
-	data  []Byte
-	addrA Word
-	addrB Word
-	size  Word
-}
-
-// NewEchoRamDevice creates an EchoRamDevice that handles from `addr` to
-// `addr + size`. The devices is initialized with `data` if provided.
-func NewEchoRamDevice(addrA, addrB Worder, size Worder, data []Byte) EchoRamDevice {
-	d := make([]Byte, size.Word())
-	copy(d, data)
-	return EchoRamDevice{d, addrA.Word(), addrB.Word(), size.Word()}
-}
-
-// ReadLocalByteAt reads a single byte from the device at the specified address.
-func (r EchoRamDevice) ReadLocalByteAt(addr Worder) Byte {
-	aa := addr.Word() - r.addrA
-	ab := addr.Word() - r.addrB
-	if aa < r.size {
-		return r.data[aa]
-	} else if ab < r.size {
-		return r.data[ab]
-	}
-	panic("echo ram read out of range")
-}
-
-// WriteLocalByteAt writes a single byte to the device at the specified address.
-func (r EchoRamDevice) WriteLocalByteAt(addr Worder, b Byter) {
-	aa := addr.Word() - r.addrA
-	ab := addr.Word() - r.addrB
-	if aa < r.size {
-		r.data[aa] = b.Byte()
-	} else if ab < r.size {
-		r.data[ab] = b.Byte()
-	} else {
-		panic("echo ram write out of range")
-	}
-}
-
-// nil memory device
-type nilDevice struct{}
-
-func (n nilDevice) ReadLocalByteAt(Worder) Byte {
-	return Byte(0)
-}
-
-func (n nilDevice) ReadByteAt(addr Worder, b chan Byte) {
-	b <- Byte(0)
-}
-
-func (n nilDevice) WriteLocalByteAt(Worder, Byter) {}
-
-func (n nilDevice) WriteByteAt(Worder, Byter) {}

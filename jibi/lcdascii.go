@@ -9,13 +9,6 @@ const (
 	lcdHeight Byte = 144
 )
 
-// An Lcd is an interface the Gpu uses to communicate with the display.
-type Lcd interface {
-	DrawLine([]Byte)
-	Blank()
-	DisableRender()
-}
-
 // An LcdASCII outputs as ascii characters to the terminal.
 type LcdASCII struct {
 	dr           bool

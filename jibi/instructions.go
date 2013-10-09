@@ -29,7 +29,7 @@ func (i instruction) String() string {
 // h and c set or reset according to operation
 func (c *Cpu) addWordR(a Worder, b Byter) Word {
 	fmt.Println(c.str())
-	panic("inst")
+	panic("untested")
 	h := a.High()
 	l := a.Low()
 	bi := int8(b.Byte())
@@ -70,7 +70,7 @@ func (c *Cpu) xor(a, b Byter) Byte {
 
 func (c *Cpu) and(a, b Byter) Byte {
 	fmt.Println(c.str())
-	panic("inst")
+	panic("untested")
 	r := a.Byte() & b.Byte()
 	c.f.reset()
 	if r == 0 {

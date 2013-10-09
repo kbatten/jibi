@@ -49,43 +49,7 @@ func (i Interrupt) String() string {
 	}
 }
 
-func (cpu *Cpu) cmdSetInterrupt(resp interface{}) {
-	if in, ok := resp.(Interrupt); !ok {
-		panic("invalid command response type")
-	} else {
-		cpu.setInterrupt(in)
-	}
-}
-
-func (cpu *Cpu) setInterrupt(in Interrupt) {
-	if cpu.ime == 1 {
-		if cpu.ie&Byte(in) == Byte(in) {
-			cpu.iflags |= Byte(in)
-		}
-	}
-}
-
-// getInterrupt returns the highest priority enabled interrupt.
-func (cpu *Cpu) getInterrupt() Interrupt {
-	iereg := cpu.ie
-	iflag := cpu.iflags
-	if Byte(InterruptVblank)&iereg&iflag != 0 {
-		return InterruptVblank
-	} else if Byte(InterruptLCDC)&iereg&iflag != 0 {
-		return InterruptLCDC
-	} else if Byte(InterruptTimer)&iereg&iflag != 0 {
-		return InterruptTimer
-	} else if Byte(InterruptSerial)&iereg&iflag != 0 {
-		return InterruptSerial
-	} else if Byte(InterruptKeypad)&iereg&iflag != 0 {
-		return InterruptKeypad
-	}
-	return 0
-}
-
-// resetInterrupt resets the specific interrupt.
-func (cpu *Cpu) resetInterrupt(i Interrupt) {
-	iflag := cpu.readByte(AddrIF)
-	iflag &= (Byte(i) ^ 0xFF)
-	cpu.writeByte(AddrIF, iflag)
+func (mmu *Mmu) SetInterrupt(in Interrupt, ak AddressKeys) {
+	iflags := mmu.ReadByteAt(AddrIF, ak)
+	mmu.WriteByteAt(AddrIF, iflags|Byte(in), ak)
 }

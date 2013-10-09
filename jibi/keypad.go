@@ -1,6 +1,7 @@
 package jibi
 
 import (
+//	"fmt"
 	"os"
 	"os/exec"
 	"time"
@@ -61,8 +62,11 @@ type valueChan struct {
 type Keypad struct {
 	CommanderInterface
 
-	p14  Byte
-	p15  Byte
+	mmu     *Mmu
+	mmuKeys AddressKeys
+
+	p1013low bool
+
 	keys map[Key]valueChan
 }
 
@@ -80,31 +84,33 @@ func NewKeypad(mmu *Mmu, runSetup bool) *Keypad {
 	}
 	commander := NewCommander("keypad")
 	keys := map[Key]valueChan{
-		KeyUp:     valueChan{0, make(chan bool)},
-		KeyDown:   valueChan{0, make(chan bool)},
-		KeyLeft:   valueChan{0, make(chan bool)},
-		KeyRight:  valueChan{0, make(chan bool)},
-		KeyB:      valueChan{0, make(chan bool)},
-		KeyA:      valueChan{0, make(chan bool)},
-		KeySelect: valueChan{0, make(chan bool)},
-		KeyStart:  valueChan{0, make(chan bool)},
+		KeyUp:     valueChan{1, make(chan bool)},
+		KeyDown:   valueChan{1, make(chan bool)},
+		KeyLeft:   valueChan{1, make(chan bool)},
+		KeyRight:  valueChan{1, make(chan bool)},
+		KeyB:      valueChan{1, make(chan bool)},
+		KeyA:      valueChan{1, make(chan bool)},
+		KeySelect: valueChan{1, make(chan bool)},
+		KeyStart:  valueChan{1, make(chan bool)},
 	}
+	mmuKeys := AddressKeys(0)
+	mmuKeys = mmu.LockAddr(AddrP1, mmuKeys)
 	kp := &Keypad{
 		CommanderInterface: commander,
+		mmu:                mmu,
+		mmuKeys:            mmuKeys,
 		keys:               keys,
 	}
 	cmdHandlers := map[Command]CommandFn{
-		CmdReadByteAt:  kp.cmdReadByteAt,
-		CmdWriteByteAt: kp.cmdWriteByteAt,
-		CmdKeyDown:     kp.cmdKeyDown,
-		CmdKeyUp:       kp.cmdKeyUp,
-		CmdString:      kp.cmdString,
+		CmdKeyDown:  kp.cmdKeyDown,
+		CmdKeyUp:    kp.cmdKeyUp,
+		CmdString:   kp.cmdString,
+		CmdKeyCheck: kp.cmdKeyCheck,
 	}
 	// no state functions so cmds are synchronous
 	commander.start(nil, cmdHandlers, nil)
-	go loopKeyboard(kp)
-
-	mmu.HandleMemory(AddrP1, AddrP1, kp)
+	go kp.loopKeyboard()
+	mmu.SetKeypad(kp)
 	return kp
 }
 
@@ -125,7 +131,7 @@ func (k *Keypad) cmdString(resp interface{}) {
 func (k *Keypad) str() string {
 	s := ""
 	for key, vc := range k.keys {
-		if vc.v == 0 {
+		if vc.v == 1 {
 			s += "  " + key.String() + "  "
 		} else {
 			s += " [" + key.String() + "] "
@@ -134,44 +140,16 @@ func (k *Keypad) str() string {
 	return s
 }
 
-// ReadByteAt reads a single byte from the keypad at the specified address.
-func (k *Keypad) ReadByteAt(addr Worder, b chan Byte) {
-	req := ReadByteAtReq{addr.Word(), b}
-	k.RunCommand(CmdReadByteAt, req)
-}
-
-// WriteByteAt writes a single byte to the keypad at the specified address.
-func (k *Keypad) WriteByteAt(addr Worder, b Byter) {
-	req := WriteByteAtReq{addr.Word(), b.Byte()}
-	k.RunCommand(CmdWriteByteAt, req)
-}
-
-func (k *Keypad) cmdReadByteAt(resp interface{}) {
-	if req, ok := resp.(ReadByteAtReq); !ok {
-		panic("invalid command response type")
-	} else {
-		req.b <- k.readByte(req.addr)
-	}
-}
-
-func (k *Keypad) cmdWriteByteAt(resp interface{}) {
-	if req, ok := resp.(WriteByteAtReq); !ok {
-		panic("invalid command response type")
-	} else {
-		k.writeByte(req.addr, req.b)
-	}
-}
-
 func (k *Keypad) cmdKeyDown(data interface{}) {
 	if key, ok := data.(Key); !ok {
 		panic("invalid command response type")
 	} else {
 		if k.keys[key].v == 0 {
-			k.keys[key] = valueChan{1, k.keys[key].c}
+			k.keys[key] = valueChan{0, k.keys[key].c}
 			c := k.keys[key].c
 			go func() {
 				for gotOne := true; gotOne; {
-					timeout := time.After(500 * time.Millisecond)
+					timeout := time.After(200 * time.Millisecond)
 					gotOne = false
 					for loop := true; loop; {
 						select {
@@ -184,6 +162,7 @@ func (k *Keypad) cmdKeyDown(data interface{}) {
 				}
 				k.RunCommand(CmdKeyUp, data)
 			}()
+			//k.mmu.SetInterrupt(InterruptKeypad, k.mmuKeys)
 		} else {
 			k.keys[key].c <- true
 		}
@@ -194,11 +173,35 @@ func (k *Keypad) cmdKeyUp(data interface{}) {
 	if key, ok := data.(Key); !ok {
 		panic("invalid command response type")
 	} else {
-		k.keys[key] = valueChan{0, k.keys[key].c}
+		k.keys[key] = valueChan{1, k.keys[key].c}
 	}
 }
 
-func loopKeyboard(kp *Keypad) {
+func (k *Keypad) cmdKeyCheck(data interface{}) {
+/*
+	b := k.mmu.ReadIoByte(AddrP1, k.mmuKeys)
+	p15 := (b & 0x20) >> 5
+	p14 := (b & 0x10) >> 4
+
+	p1310 := p14&k.keys[KeyRight].v | p15&k.keys[KeyA].v +
+		(p14&k.keys[KeyLeft].v|p15&k.keys[KeyB].v)<<1 +
+		(p14&k.keys[KeyUp].v|p15&k.keys[KeySelect].v)<<2 +
+		(p14&k.keys[KeyDown].v|p15&k.keys[KeyStart].v)<<3
+
+	fmt.Println(p1310)
+*/
+	//k.writeByte(AddrP1, p1310)
+}
+
+func (kp *Keypad) readByte(addr Worder) Byte {
+	return kp.mmu.ReadByteAt(addr, kp.mmuKeys)
+}
+
+func (kp *Keypad) writeByte(addr Worder, b Byter) {
+	kp.mmu.WriteByteAt(addr, b, kp.mmuKeys)
+}
+
+func (kp *Keypad) loopKeyboard() {
 	b := make([]byte, 1)
 	for {
 		os.Stdin.Read(b)
@@ -223,16 +226,4 @@ func loopKeyboard(kp *Keypad) {
 			panic("KeyPanic")
 		}
 	}
-}
-
-func (k *Keypad) readByte(addr Worder) Byte {
-	return k.p14&k.keys[KeyRight].v | k.p15&k.keys[KeyA].v +
-		(k.p14*k.keys[KeyLeft].v|k.p15&k.keys[KeyB].v)<<1 +
-		(k.p14*k.keys[KeyUp].v|k.p15&k.keys[KeySelect].v)<<2 +
-		(k.p14*k.keys[KeyDown].v|k.p15&k.keys[KeyStart].v)<<3
-}
-
-func (k *Keypad) writeByte(addr Worder, b Byter) {
-	k.p15 = b.Byte() & 0x20
-	k.p14 = b.Byte() & 0x10
 }

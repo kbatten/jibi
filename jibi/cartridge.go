@@ -7,7 +7,7 @@ import (
 // A Cartridge holds the game rom as well as information about the rom
 // capabilities.
 type Cartridge struct {
-	rom LocalMemoryDevice
+	Rom []Byte
 
 	// rom info
 	name    string
@@ -19,7 +19,7 @@ type Cartridge struct {
 }
 
 // NewCartridge reads and parses a rom and returns a new cartridge object.
-func NewCartridge(mmu *Mmu, rom []Byte) *Cartridge {
+func NewCartridge(rom []Byte) *Cartridge {
 	name := ""
 	for _, c := range rom[0x0134 : 0x0142+1] {
 		if c == 0 {
@@ -27,14 +27,14 @@ func NewCartridge(mmu *Mmu, rom []Byte) *Cartridge {
 		}
 		name += string(c)
 	}
-	romDev := NewRomDevice(Word(0x0000), Word(0x8000), rom)
+	romN := make([]Byte, 0x10000)
+	copy(romN, rom)
 	color := rom[0x0143] == 0x80
 	super := rom[0x0146] == 0x03
 	ct := cartridgeType(rom[0x0147])
 	romSize := cartridgeRomSize(rom[0x0148])
 	ramSize := cartridgeRamSize(rom[0x0149])
-	cart := &Cartridge{romDev, name, color, super, ct, romSize, ramSize}
-	mmu.HandleCpuMemory(0x0000, 0x7FFF, romDev)
+	cart := &Cartridge{romN, name, color, super, ct, romSize, ramSize}
 	return cart
 }
 

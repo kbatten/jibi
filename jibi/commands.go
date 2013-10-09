@@ -33,7 +33,6 @@ var commandTable = map[opcode]command{
 		c.b.set(c.inst.p[1])
 	}},
 	0x02: command{"LD (BC), A", 0, 8, func(c *Cpu) {
-		panic("inst")
 		c.writeByte(c.b, c.a)
 	}},
 	0x03: command{"INC BC", 0, 8, func(c *Cpu) {
@@ -134,7 +133,8 @@ var commandTable = map[opcode]command{
 		c.h.set(c.inst.p[0])
 	}},
 	0x27: command{"DAA", 0, 4, func(c *Cpu) {
-		panic("inst")
+		fmt.Println(c.str())
+		panic("untested")
 		a := c.a.Byte()
 		if a&0x0F > 9 || c.f.getFlag(flagH) {
 			a += 0x06
@@ -174,13 +174,11 @@ var commandTable = map[opcode]command{
 	}},
 	0x33: command{"", 0, 0, func(c *Cpu) {}},
 	0x34: command{"INC (HL)", 0, 12, func(c *Cpu) {
-		panic("inst")
 		v := c.readByte(c.h)
 		v = c.inc(v)
 		c.writeByte(c.h, v)
 	}},
 	0x35: command{"DEC (HL)", 0, 12, func(c *Cpu) {
-		panic("inst")
 		v := c.readByte(c.h)
 		v = c.dec(v)
 		c.writeByte(c.h, v)
@@ -315,7 +313,6 @@ var commandTable = map[opcode]command{
 		c.a.set(c.a)
 	}},
 	0x80: command{"ADD A, B", 0, 4, func(c *Cpu) {
-		panic("inst")
 		c.a.set(c.add(c.a, c.b))
 	}},
 	0x81: command{"ADD A, C", 0, 4, func(c *Cpu) {
@@ -343,7 +340,6 @@ var commandTable = map[opcode]command{
 		c.a.set(c.adc(c.a, c.b))
 	}},
 	0x89: command{"ADC A, C", 0, 4, func(c *Cpu) {
-		panic("inst")
 		c.a.set(c.adc(c.a, c.c))
 	}},
 	0x8A: command{"ADC A, D", 0, 4, func(c *Cpu) {
@@ -402,7 +398,6 @@ var commandTable = map[opcode]command{
 	0xA2: command{"", 0, 0, func(c *Cpu) {}},
 	0xA3: command{"", 0, 0, func(c *Cpu) {}},
 	0xA4: command{"AND H", 0, 4, func(c *Cpu) {
-		panic("inst")
 		c.a.set(c.and(c.a, c.h))
 	}},
 	0xA5: command{"", 0, 0, func(c *Cpu) {}},
@@ -509,7 +504,6 @@ var commandTable = map[opcode]command{
 		c.bit(7, c.h)
 	}},
 	0xCC: command{"CALL Z, nn", 2, 12, func(c *Cpu) {
-		panic("inst")
 		c.callF(flagZ, BytesToWord(c.inst.p[1], c.inst.p[0]))
 	}},
 	0xCD: command{"CALL nn", 2, 12, func(c *Cpu) {
@@ -569,7 +563,8 @@ var commandTable = map[opcode]command{
 	0xF6: command{"", 0, 0, func(c *Cpu) {}},
 	0xF7: command{"", 0, 0, func(c *Cpu) {}},
 	0xF8: command{"LDHL SP, n", 1, 12, func(c *Cpu) {
-		panic("inst")
+		fmt.Println(c.str())
+		panic("untested")
 		c.h.setWord(c.addWordR(c.sp, c.inst.p[0]))
 		c.f.resetFlag(flagZ)
 		c.f.resetFlag(flagN)

@@ -34,15 +34,11 @@ type Cpu struct {
 	// interrupt master enable
 	ime Bit
 
-	mmu *Mmu
-
-	bios   []Byte
-	zero   []Byte
-	iflags Byte
-	ie     Byte
-	tma    Byte
+	mmu     *Mmu
+	mmuKeys AddressKeys
 
 	// internal state
+	bios         []Byte
 	biosFinished bool
 
 	// notifications
@@ -79,41 +75,33 @@ func NewCpu(mmu *Mmu, bios []Byte) *Cpu {
 		bios = biosN
 	}
 
+	mmuKeys := AddressKeys(0)
+
+	if mmu != nil {
+		mmuKeys = mmu.LockAddr(AddrRom, mmuKeys)
+		mmuKeys = mmu.LockAddr(AddrRam, mmuKeys)
+		mmuKeys = mmu.LockAddr(AddrIF, mmuKeys)
+		mmuKeys = mmu.LockAddr(AddrZero, mmuKeys)
+		mmuKeys = mmu.LockAddr(AddrIE, mmuKeys)
+	}
+
 	commander := NewCommander("cpu")
 	cpu := &Cpu{CommanderInterface: commander,
 		a: a, b: b, c: c, d: d, e: e, f: f, l: l, h: h,
-		ime:  Bit(1),
-		mmu:  mmu,
-		bios: bios,
-		zero: make([]Byte, 0x7F),
-		hz:   hz, period: period,
+		ime:          Bit(1),
+		mmu:          mmu,
+		mmuKeys:      mmuKeys,
+		bios:         bios,
 		biosFinished: biosFinished,
+		hz:           hz, period: period,
 	}
 	cmdHandlers := map[Command]CommandFn{
 		CmdClockAccumulator: cpu.cmdClock,
 		CmdString:           cpu.cmdString,
-		CmdSetInterrupt:     cpu.cmdSetInterrupt,
 		CmdOnInstruction:    cpu.cmdOnInstruction,
-		CmdHandleMemory: func(r interface{}) {
-			if mmu != nil {
-				mmu.cmdHandleMemory(r)
-			}
-		},
-		CmdHandleCpuMemory: func(r interface{}) {
-			if mmu != nil {
-				mmu.cmdHandleCpuMemory(r)
-			}
-		},
 	}
 
 	commander.start(cpu.step, cmdHandlers, nil)
-	if mmu != nil {
-		mmu.connectCpu(cpu)
-		mmu.handleLocalMemory(CpuMemoryHandler{0xFF80, 0xFFFE, cpu})
-		mmu.handleLocalMemory(CpuMemoryHandler{AddrIE, AddrIE, cpu})
-		mmu.handleLocalMemory(CpuMemoryHandler{AddrIF, AddrIF, cpu})
-		mmu.handleLocalMemory(CpuMemoryHandler{AddrTMA, AddrTMA, cpu})
-	}
 	return cpu
 }
 
@@ -148,9 +136,9 @@ func (c *Cpu) cmdString(resp interface{}) {
 func (c *Cpu) str() string {
 	return fmt.Sprintf(`%s
 a:%s f:%s b:%s c:%s d:%s e:%s h:%s l:%s sp:%s pc:%s
-ime:%d ie:0x%02X if:0x%02X %s`,
+ime:%d %s`,
 		c.inst, c.a, c.f, c.b, c.c, c.d, c.e, c.h, c.l, c.sp, c.pc,
-		c.ime, c.ie, c.iflags, c.f.flagsString())
+		c.ime, c.f.flagsString())
 }
 
 func (c *Cpu) String() string {
@@ -159,91 +147,39 @@ func (c *Cpu) String() string {
 	return <-resp
 }
 
-// ReadByteAt reads a single byte from the cpu at the specified address.
-func (c *Cpu) ReadByteAt(addr Worder, b chan Byte) {
-	req := ReadByteAtReq{addr.Word(), b}
-	c.RunCommand(CmdReadByteAt, req)
+func (c *Cpu) lockAddr(addr Worder) {
+	c.mmuKeys = c.mmu.LockAddr(addr, c.mmuKeys)
 }
 
-// WriteByteAt writes a single byte to the cpu at the specified address.
-func (c *Cpu) WriteByteAt(addr Worder, b Byter) {
-	req := WriteByteAtReq{addr.Word(), b.Byte()}
-	c.RunCommand(CmdWriteByteAt, req)
-}
-
-// ReadLocalByteAt reads a single byte from the cpu at the specified address.
-func (c *Cpu) ReadLocalByteAt(addr Worder) Byte {
-	a := addr.Word()
-	if !c.biosFinished && a <= 0xFF {
-		return c.bios[addr.Word()]
-	} else if 0xFF80 <= a && a <= 0xFFFE {
-		return c.zero[a-0xFF80]
-	} else if AddrIF == a {
-		return c.iflags
-	} else if AddrIE == a {
-		return c.ie
-	} else if AddrTMA == a {
-		return c.tma
-	} else if c.mmu.isLocalMemory(addr) {
-		return c.mmu.readLocalByte(addr)
-	}
-	panic("cpu read out of range")
+func (c *Cpu) unlockAddr(addr Worder) {
+	c.mmuKeys = c.mmu.UnlockAddr(addr, c.mmuKeys)
 }
 
 func (c *Cpu) readByte(addr Worder) Byte {
 	a := addr.Word()
 	if !c.biosFinished && a <= 0xFF {
 		return c.bios[a]
-	} else if 0xFF80 <= a && a <= 0xFFFE {
-		return c.zero[a-0xFF80]
-	} else if AddrIF == a {
-		panic("IF")
-		return c.iflags
-	} else if AddrIE == a {
-		panic("IE")
-		return c.ie
-	} else if AddrTMA == a {
-		return c.tma
-	} else if c.mmu.isLocalMemory(addr) {
-		return c.mmu.readLocalByte(addr)
 	}
-	c.yield()
-	return c.mmu.readRemoteByte(a)
-}
-
-// WriteLocalByteAt writes a single byte to the cpu at the specified address.
-func (c *Cpu) WriteLocalByteAt(addr Worder, b Byter) {
-	a := addr.Word()
-	if 0xFF80 <= a && a <= 0xFFFE {
-		c.zero[a-0xFF80] = b.Byte()
-	} else if AddrIF == a {
-		c.iflags = b.Byte()
-	} else if AddrIE == a {
-		c.ie = b.Byte()
-	} else if AddrTMA == a {
-		c.tma = b.Byte()
-	} else if c.mmu.isLocalMemory(addr) {
-		c.mmu.writeLocalByte(addr, b)
+	if AddrVRam <= a && a <= AddrRam {
+		c.lockAddr(AddrVRam)
+		defer c.unlockAddr(AddrVRam)
+	} else if AddrOam <= a && a <= AddrOamEnd {
+		c.lockAddr(AddrOam)
+		defer c.unlockAddr(AddrOam)
 	}
-	panic("cpu write out of range")
+	return c.mmu.ReadByteAt(addr, c.mmuKeys)
 }
 
 func (c *Cpu) writeByte(addr Worder, b Byter) {
 	a := addr.Word()
-	if 0xFF80 <= a && a <= 0xFFFE {
-		c.zero[a-0xFF80] = b.Byte()
-	} else if AddrIF == a {
-		c.iflags = b.Byte()
-	} else if AddrIE == a {
-		c.ie = b.Byte()
-	} else if AddrTMA == a {
-		c.tma = b.Byte()
-	} else if c.mmu.isLocalMemory(addr) {
-		c.mmu.writeLocalByte(addr, b)
-	} else {
-		c.yield()
-		c.mmu.writeRemoteByte(addr, b)
+	if AddrVRam <= a && a <= AddrRam {
+		c.lockAddr(AddrVRam)
+		defer c.unlockAddr(AddrVRam)
+	} else if AddrOam <= a && a <= AddrOamEnd {
+		c.lockAddr(AddrOam)
+		defer c.unlockAddr(AddrOam)
 	}
+	c.mmu.WriteByteAt(addr, b, c.mmuKeys)
 }
 
 func (c *Cpu) readWord(addr Worder) Word {
@@ -288,14 +224,63 @@ func (c *Cpu) execute() {
 	}
 }
 
-func (c *Cpu) interrupt() {
-	if c.ime == 1 {
-		in := c.getInterrupt()
+/*
+// setInterrupt sets the specific interrupt.
+func (cpu *Cpu) setInterrupt(in Interrupt) {
+	if cpu.ime == 1 {
+		ie := cpu.readByte(AddrIE)
+		if ie&Byte(in) == Byte(in) {
+			iflag
+			cpu.iflag |= Byte(in)
+			cpu.writeByte(AddrIF, cpu.iflag)
+		}
+	}
+}
+*/
+
+// resetInterrupt resets the specific interrupt.
+func (cpu *Cpu) resetInterrupt(i Interrupt, iflag Byte) {
+	iflag &= (Byte(i) ^ 0xFF)
+	cpu.writeByte(AddrIF, iflag)
+}
+
+// getInterrupt returns the highest priority enabled interrupt.
+func (cpu *Cpu) getInterrupt(ie, iflag Byte) Interrupt {
+	if Byte(InterruptVblank)&ie&iflag != 0 {
+		return InterruptVblank
+	} else if Byte(InterruptLCDC)&ie&iflag != 0 {
+		return InterruptLCDC
+	} else if Byte(InterruptTimer)&ie&iflag != 0 {
+		return InterruptTimer
+	} else if Byte(InterruptSerial)&ie&iflag != 0 {
+		return InterruptSerial
+	} else if Byte(InterruptKeypad)&ie&iflag != 0 {
+		return InterruptKeypad
+	}
+	return 0
+}
+
+func (cpu *Cpu) io() {
+	iflag := cpu.mmu.ReadIoByte(AddrIF, cpu.mmuKeys)
+	if cpu.ime == 0 {
+		iflag = 0 // mask all interrupts
+	} else {
+		ie := cpu.readByte(AddrIE)
+		iflag &= ie // mask interrupts
+	}
+	cpu.writeByte(AddrIF, iflag)
+}
+
+func (cpu *Cpu) interrupt() {
+	if cpu.ime == 1 {
+		ie := cpu.readByte(AddrIE)
+		iflag := cpu.readByte(AddrIF)
+		in := cpu.getInterrupt(ie, iflag)
 		if in > 0 {
-			c.ime = 0
-			c.push(c.pc)
-			c.jp(in.Address())
-			c.resetInterrupt(in)
+			cpu.ime = 0
+			cpu.push(cpu.pc)
+			cpu.jp(in.Address())
+			cpu.resetInterrupt(in, iflag)
 		}
 	}
 }
@@ -311,9 +296,12 @@ func (c *Cpu) step(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32
 		inst <- c.str()
 	}
 
+	c.io()        // handle memory mapped io
 	c.interrupt() // handle interrupts
 	c.fetch()     // load next instruction into c.inst
-	c.execute()   // execute c.inst instruction
+	c.lockAddr(AddrGpuRegs)
+	c.execute() // execute c.inst instruction
+	c.unlockAddr(AddrGpuRegs)
 
 	for _, clk := range c.tClocks {
 		clk.AddCycles(c.t)

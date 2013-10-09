@@ -13,87 +13,31 @@ type Gpu struct {
 	// 0x1800-0x1BFF tile map 0
 	// 0x1C00-0x1FFF tile map 1
 
-	mmu MemoryDevice
-	cpu MemoryCommander
-	lcd Lcd
-	clk chan ClockType
+	mmu     *Mmu
+	mmuKeys AddressKeys
+	lcd     *LcdASCII
+	clk     chan ClockType
 
 	bgBuffer []Byte // 256x256 background 2bit bitmap buffer
 	fgBuffer []Byte // 144x160 foreground 2bit bitmap buffer
-
-	// memory map
-	charRam    []Byte
-	bgTilemap0 []Byte
-	bgTilemap1 []Byte
-	oam        []Byte
-	lcdc       Byte
-	stat       Byte
-	scy        Byte
-	scx        Byte
-	ly         Byte
-	bgp        Byte
-	obp0       Byte
-	obp1       Byte
-	wy         Byte
-	wx         Byte
-
-	// communication
-	rwChan chan Byte
 
 	// metrics
 	frameCounters []*Clock
 }
 
 // NewGpu creates a Gpu and starts a goroutine.
-func NewGpu(mmu *Mmu, cpu MemoryCommander, lcd Lcd, clk chan ClockType) *Gpu {
+func NewGpu(mmu *Mmu, lcd *LcdASCII, clk chan ClockType) *Gpu {
 	commander := NewCommander("gpu")
 	gpu := &Gpu{CommanderInterface: commander,
-		mmu: mmu, cpu: cpu, lcd: lcd, clk: clk,
-		bgBuffer:   make([]Byte, 256*256),
-		fgBuffer:   make([]Byte, int(lcdWidth)*int(lcdHeight)),
-		charRam:    make([]Byte, 0x1800),
-		bgTilemap0: make([]Byte, 0x400),
-		bgTilemap1: make([]Byte, 0x400),
-		oam:        make([]Byte, 0xA0),
-		rwChan:     make(chan Byte),
+		mmu: mmu, lcd: lcd, clk: clk,
+		bgBuffer: make([]Byte, 256*256),
+		fgBuffer: make([]Byte, int(lcdWidth)*int(lcdHeight)),
 	}
 	cmdHandlers := map[Command]CommandFn{
-		CmdReadByteAt:   gpu.cmdReadByteAt,
-		CmdWriteByteAt:  gpu.cmdWriteByteAt,
 		CmdFrameCounter: gpu.cmdFrameCounter,
 	}
 	commander.start(gpu.stateScanlineOam, cmdHandlers, clk)
-	mmu.HandleMemory(0x8000, 0x97FF, gpu)
-	mmu.HandleMemory(0x9800, 0x9BFF, gpu)
-	mmu.HandleMemory(0x9C00, 0x9FFF, gpu)
-	mmu.HandleMemory(0xFE00, 0xFE9F, gpu)
-	mmu.HandleMemory(AddrLCDC, AddrLCDC, gpu)
-	mmu.HandleMemory(AddrSTAT, AddrSTAT, gpu)
-	mmu.HandleMemory(AddrSCY, AddrSCY, gpu)
-	mmu.HandleMemory(AddrSCX, AddrSCX, gpu)
-	mmu.HandleMemory(AddrLY, AddrLY, gpu)
-	mmu.HandleMemory(AddrBGP, AddrBGP, gpu)
-	mmu.HandleMemory(AddrOBP0, AddrOBP0, gpu)
-	mmu.HandleMemory(AddrOBP1, AddrOBP1, gpu)
-	mmu.HandleMemory(AddrWY, AddrWY, gpu)
-	mmu.HandleMemory(AddrWX, AddrWX, gpu)
 	return gpu
-}
-
-func (g *Gpu) cmdReadByteAt(resp interface{}) {
-	if req, ok := resp.(ReadByteAtReq); !ok {
-		panic("invalid command response type")
-	} else {
-		req.b <- g.readByte(req.addr)
-	}
-}
-
-func (g *Gpu) cmdWriteByteAt(resp interface{}) {
-	if req, ok := resp.(WriteByteAtReq); !ok {
-		panic("invalid command response type")
-	} else {
-		g.writeByte(req.addr, req.b)
-	}
 }
 
 func (g *Gpu) cmdFrameCounter(resp interface{}) {
@@ -106,96 +50,12 @@ func (g *Gpu) cmdFrameCounter(resp interface{}) {
 	}
 }
 
-// ReadByteAt reads a single byte from the gpu at the specified address.
-func (g *Gpu) ReadByteAt(addr Worder, b chan Byte) {
-	req := ReadByteAtReq{addr.Word(), b}
-	g.RunCommand(CmdReadByteAt, req)
-}
-
-// WriteByteAt writes a single byte to the gpu at the specified address.
-func (g *Gpu) WriteByteAt(addr Worder, b Byter) {
-	req := WriteByteAtReq{addr.Word(), b.Byte()}
-	g.RunCommand(CmdWriteByteAt, req)
-}
-
 func (g *Gpu) readByte(addr Worder) Byte {
-	a := addr.Word()
-	if AddrLCDC == a {
-		return g.lcdc
-	} else if 0x8000 <= a && a <= 0x97FF {
-		return g.charRam[a-0x8000]
-	} else if 0x9800 <= a && a <= 0x9BFF {
-		return g.bgTilemap0[a-0x9800]
-	} else if 0x9C00 <= a && a <= 0x9FFF {
-		return g.bgTilemap1[a-0x9C00]
-	} else if 0xFE00 <= a && a <= 0xFE9F {
-		return g.oam[a-0xFE00]
-	} else if AddrSTAT == a {
-		return g.stat
-	} else if AddrSCY == a {
-		return g.scy
-	} else if AddrSCX == a {
-		return g.scx
-	} else if AddrLY == a {
-		return g.ly
-	} else if AddrBGP == a {
-		return g.bgp
-	} else if AddrOBP0 == a {
-		return g.obp0
-	} else if AddrOBP1 == a {
-		return g.obp1
-	} else if AddrWY == a {
-		return g.wy
-	} else if AddrWX == a {
-		return g.wx
-	}
-	g.yield()
-	g.mmu.ReadByteAt(a, g.rwChan)
-	return <-g.rwChan
+	return g.mmu.ReadByteAt(addr, g.mmuKeys)
 }
 
 func (g *Gpu) writeByte(addr Worder, b Byter) {
-	a := addr.Word()
-	if AddrLCDC == a {
-		// if bit 7 is reset, pause the gpu
-		// if bit 7 is set, play the gpu
-		g.lcdc = b.Byte()
-		if g.lcdc&0x80 == 0x80 {
-			g.play()
-		} else {
-			g.pause()
-			g.ly = 0
-		}
-	} else if 0x8000 <= a && a <= 0x97FF {
-		g.charRam[a-0x8000] = b.Byte()
-	} else if 0x9800 <= a && a <= 0x9BFF {
-		g.bgTilemap0[a-0x9800] = b.Byte()
-	} else if 0x9C00 <= a && a <= 0x9FFF {
-		g.bgTilemap1[a-0x9C00] = b.Byte()
-	} else if 0xFE00 <= a && a <= 0xFE9F {
-		g.oam[a-0xFE00] = b.Byte()
-	} else if AddrSTAT == a {
-		g.stat = b.Byte()
-	} else if AddrSCY == a {
-		g.scy = b.Byte()
-	} else if AddrSCX == a {
-		g.scx = b.Byte()
-	} else if AddrLY == a {
-		g.ly = b.Byte()
-	} else if AddrBGP == a {
-		g.bgp = b.Byte()
-	} else if AddrOBP0 == a {
-		g.obp0 = b.Byte()
-	} else if AddrOBP1 == a {
-		g.obp1 = b.Byte()
-	} else if AddrWY == a {
-		g.wy = b.Byte()
-	} else if AddrWX == a {
-		g.wx = b.Byte()
-	} else {
-		g.yield()
-		g.mmu.WriteByteAt(addr, b)
-	}
+	g.mmu.WriteByteAt(addr, b, g.mmuKeys)
 }
 
 /*
@@ -221,7 +81,9 @@ func paintTile(frameBuffer []Byte, tileData []Byte, x, y uint8, above, xflip, yf
 func (g *Gpu) generateLine(line Byte) []Byte {
 	// get background
 	// TODO: bg wraps to the same X, not to X+1, same with Y
-	offset := uint16(line+g.scy)*256 + uint16(g.scx)
+	scy := g.readByte(AddrSCY)
+	scx := g.readByte(AddrSCX)
+	offset := uint16(line+scy)*256 + uint16(scx)
 	lbs := g.bgBuffer[offset : offset+uint16(lcdWidth)-1]
 	// TODO: draw up to 10 sprites
 	return lbs
@@ -337,20 +199,22 @@ func byteToPalette(p Byte) []Byte {
 }
 
 func (g *Gpu) generateFrame() {
+	lcdc := g.readByte(AddrLCDC)
 	// read in map, tileset data
-	windowTilemap := (g.lcdc & 0x40) >> 6
-	windowDisplay := g.lcdc&0x20 == 0x20
-	bgTileset := (g.lcdc & 0x10) >> 4
-	bgTilemap := (g.lcdc & 0x08) >> 3
-	//objSpriteSize := (g.lcdc & 0x04) >> 2
-	//objDisplay := g.lcdc&0x02 == 0x02
-	bgWinDisplay := g.lcdc&0x01 == 0x01
+	windowTilemap := (lcdc & 0x40) >> 6
+	windowDisplay := lcdc&0x20 == 0x20
+	bgTileset := (lcdc & 0x10) >> 4
+	bgTilemap := (lcdc & 0x08) >> 3
+	//objSpriteSize := (lcdc & 0x04) >> 2
+	//objDisplay := lcdc&0x02 == 0x02
+	bgWinDisplay := lcdc&0x01 == 0x01
 
 	// draw background
 	if bgWinDisplay {
 		x := uint8(0)
 		y := uint8(0)
-		palette := byteToPalette(g.bgp)
+		bgp := g.readByte(AddrBGP)
+		palette := byteToPalette(bgp)
 		for _, bgtile := range g.getBgTiles(bgTilemap, bgTileset, palette) {
 			bgtile.Paint(g.bgBuffer, x, y)
 			x += 8
@@ -358,20 +222,22 @@ func (g *Gpu) generateFrame() {
 				y += 8
 			}
 		}
-	}
-	if bgWinDisplay && windowDisplay {
-		// TODO: this has to be handled line by line
-		// wx is read on screen redraw and after a scan line interrupt
-		// wy is read on screen redraw
-		x := g.wx - 7
-		y := g.wy
-		palette := byteToPalette(g.bgp)
-		for _, wintile := range g.getWinTiles(windowTilemap, bgTileset, palette) {
-			wintile.Paint(g.fgBuffer, uint8(x), uint8(y))
-			x += 8
-			if x >= lcdWidth {
-				y += 8
-				x = 0
+
+		if windowDisplay {
+			// TODO: this has to be handled line by line
+			// wx is read on screen redraw and after a scan line interrupt
+			// wy is read on screen redraw
+			wx := g.readByte(AddrWX)
+			wy := g.readByte(AddrWY)
+			x = uint8(wx) - 7
+			y = uint8(wy)
+			palette := byteToPalette(bgp)
+			for _, wintile := range g.getWinTiles(windowTilemap, bgTileset, palette) {
+				wintile.Paint(g.fgBuffer, x, y)
+				x += 8
+				if x == 0 {
+					y += 8
+				}
 			}
 		}
 	}
@@ -408,24 +274,45 @@ func (g *Gpu) generateFrame() {
 	*/
 }
 
+func (g *Gpu) lockAddr(addr Worder) {
+	g.mmuKeys = g.mmu.LockAddr(addr, g.mmuKeys)
+}
+
+func (g *Gpu) unlockAddr(addr Worder) {
+	g.mmuKeys = g.mmu.UnlockAddr(addr, g.mmuKeys)
+}
+
 func (g *Gpu) stateScanlineOam(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
+	g.lockAddr(AddrGpuRegs)
+	defer g.unlockAddr(AddrGpuRegs)
 	if first {
-		g.stat = g.stat&0x7C | 0x2
+		//g.lockAddr(AddrOam)
+		stat := g.readByte(AddrSTAT)
+		stat = stat&0x7C | 0x2 // mode 2
+		g.writeByte(AddrSTAT, stat)
 	}
 	if t >= 80 {
 		t -= 80
+		//g.unlockAddr(AddrOam)
 		return g.stateScanlineVram, true, t, 172
 	}
 	return g.stateScanlineOam, false, t, 80
 }
 
 func (g *Gpu) stateScanlineVram(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
+	g.lockAddr(AddrGpuRegs)
+	defer g.unlockAddr(AddrGpuRegs)
 	if first {
-		g.stat = g.stat&0x7C | 0x3
-		g.lcd.DrawLine(g.generateLine(g.ly))
+		//g.lockAddr(AddrVRam)
+		stat := g.readByte(AddrSTAT)
+		stat = stat&0x7C | 0x3 // mode 3
+		g.writeByte(AddrSTAT, stat)
+		ly := g.readByte(AddrLY)
+		g.lcd.DrawLine(g.generateLine(ly))
 	}
 	if t >= 172 {
 		t -= 172
+		//g.unlockAddr(AddrVRam)
 		return g.stateHblank, true, t, 204
 	}
 	if !first {
@@ -435,13 +322,19 @@ func (g *Gpu) stateScanlineVram(first bool, t uint32) (CommanderStateFn, bool, u
 }
 
 func (g *Gpu) stateHblank(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
+	g.lockAddr(AddrGpuRegs)
+	defer g.unlockAddr(AddrGpuRegs)
 	if first {
-		g.stat = g.stat&0x7C | 0x1
+		stat := g.readByte(AddrSTAT)
+		stat = stat&0x7C | 0x1 // mode 1
+		g.writeByte(AddrSTAT, stat)
 	}
 	if t >= 204 {
 		t -= 204
-		g.ly++
-		if g.ly == lcdHeight-1 {
+		ly := g.readByte(AddrLY)
+		ly++
+		g.writeByte(AddrLY, ly)
+		if ly == lcdHeight-1 {
 			return g.stateVblank, true, t, 456
 		}
 		return g.stateScanlineOam, true, t, 80
@@ -453,23 +346,31 @@ func (g *Gpu) stateHblank(first bool, t uint32) (CommanderStateFn, bool, uint32,
 }
 
 func (g *Gpu) stateVblank(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
+	g.lockAddr(AddrGpuRegs)
+	defer g.unlockAddr(AddrGpuRegs)
 	if first {
-		g.stat = g.stat&0x7C | 0x0
-		g.cpu.RunCommand(CmdSetInterrupt, InterruptVblank)
-		g.yield()
+		stat := g.readByte(AddrSTAT)
+		stat = stat&0x7C | 0x0 // mode 0
+		g.writeByte(AddrSTAT, stat)
+		g.mmu.SetInterrupt(InterruptVblank, g.mmuKeys)
 		g.lcd.Blank()
+		g.lockAddr(AddrVRam) // TODO: this should be in scanline vram
 		g.generateFrame()
+		g.unlockAddr(AddrVRam)
 		for _, clk := range g.frameCounters {
 			clk.AddCycles(1)
 		}
 	}
 	if t >= 456 {
 		t -= 456
-		g.ly++
-		if g.ly > lcdHeight-1+10 {
-			g.ly = 0
+		ly := g.readByte(AddrLY)
+		ly++
+		if ly > lcdHeight-1+10 {
+			ly = 0
+			g.writeByte(AddrLY, ly)
 			return g.stateScanlineOam, true, t, 80
 		}
+		g.writeByte(AddrLY, ly)
 		return g.stateVblank, false, t, 456
 	}
 	if !first {

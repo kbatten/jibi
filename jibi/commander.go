@@ -11,48 +11,33 @@ type Command int
 const (
 	CmdNil Command = iota
 
-	CmdHandleMemory    // memory that is not controlled by the cpu
-	CmdHandleCpuMemory // memory that is controlled by the cpu goroutine
 	CmdUnloadBios
 	CmdSetInterrupt
 	CmdClockAccumulator // accumulating clock
 	CmdOnInstruction    // blocking clock channel that ticks after every instruction
 	cmdCPU
 
-	cmdIRQ
-
-	cmdLCD
-
 	CmdFrameCounter
 	cmdGPU
 
-	cmdCART
-
 	CmdKeyDown
 	CmdKeyUp
+	CmdKeyCheck
 	cmdKEYPAD
 
 	CmdCmdCounter  // a clock that outputs number of commands processed
 	CmdLoopCounter // a clock that outputs number of loops run
-	CmdReadByteAt
-	CmdWriteByteAt
 	CmdString
 	CmdPlay
 	CmdPause
 	CmdStop
 	cmdALL
-
-	cmdCPUGPU
 )
 
 func (c Command) String() string {
 	switch c {
 	case CmdNil:
 		return "CmdNil"
-	case CmdHandleMemory:
-		return "CmdHandleMemory"
-	case CmdHandleCpuMemory:
-		return "CmdHandleCpuMemory"
 	case CmdUnloadBios:
 		return "CmdUnloadBios"
 	case CmdClockAccumulator:
@@ -61,30 +46,22 @@ func (c Command) String() string {
 		return "CmdOnInstruction"
 	case cmdCPU:
 		return "cmdCPU"
-	case cmdIRQ:
-		return "cmdIRQ"
-	case cmdLCD:
-		return "cmdLCD"
 	case CmdFrameCounter:
 		return "CmdFrameCounter"
 	case cmdGPU:
 		return "cmdGPU"
-	case cmdCART:
-		return "cmdCART"
 	case CmdKeyDown:
 		return "CmdKeyDown"
 	case CmdKeyUp:
 		return "CmdKeyUp"
+	case CmdKeyCheck:
+		return "CmdKeyCheck"
 	case cmdKEYPAD:
 		return "cmdKEYPAD"
 	case CmdCmdCounter:
 		return "CmdCmdCounter"
 	case CmdLoopCounter:
 		return "CmdLoopCounter"
-	case CmdReadByteAt:
-		return "CmdReadByteAt"
-	case CmdWriteByteAt:
-		return "CmdWriteByteAt"
 	case CmdString:
 		return "CmdString"
 	case CmdPlay:
@@ -95,8 +72,6 @@ func (c Command) String() string {
 		return "CmdStop"
 	case cmdALL:
 		return "cmdALL"
-	case cmdCPUGPU:
-		return "cmdCPUGPU"
 	}
 	return fmt.Sprintf("CmdUNKNOWN-%d", int(c))
 }
