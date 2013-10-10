@@ -9,6 +9,7 @@ import (
 const (
 	AddrRom    Word = 0x0000
 	AddrVRam   Word = 0x8000
+	AddrERam   Word = 0xA000
 	AddrRam    Word = 0xC000
 	AddrOam    Word = 0xFE00
 	AddrOamEnd Word = 0xFEA0
@@ -92,6 +93,7 @@ const (
 	abNil addressBlock = iota
 	abRom addressBlock = 1 << iota
 	abVRam
+	abERam
 	abRam
 	abOam
 	abP1
@@ -110,6 +112,8 @@ func (a addressBlock) String() string {
 		return "abRom"
 	case abVRam:
 		return "abVRam"
+	case abERam:
+		return "abERam"
 	case abRam:
 		return "abRam"
 	case abOam:
@@ -134,8 +138,10 @@ func (m *Mmu) selectAddressBlock(addr Worder, rw string) (addressBlock, Word) {
 	a := addr.Word()
 	if a < AddrVRam {
 		return abRom, 0
-	} else if AddrVRam <= a && a < AddrRam {
+	} else if AddrVRam <= a && a < AddrERam {
 		return abVRam, AddrVRam
+	} else if AddrERam <= a && a < AddrRam {
+		return abERam, AddrERam
 	} else if AddrRam <= a && a < AddrOam {
 		return abRam, AddrRam
 	} else if AddrOam <= a && a < AddrOamEnd {
