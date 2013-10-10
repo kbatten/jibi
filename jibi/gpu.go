@@ -13,9 +13,9 @@ type Gpu struct {
 	// 0x1800-0x1BFF tile map 0
 	// 0x1C00-0x1FFF tile map 1
 
-	mmu     *Mmu
+	mmu     Mmu
 	mmuKeys AddressKeys
-	lcd     *LcdASCII
+	lcd     Lcd
 	clk     chan ClockType
 
 	bgBuffer []Byte // 256x256 background 2bit bitmap buffer
@@ -26,7 +26,7 @@ type Gpu struct {
 }
 
 // NewGpu creates a Gpu and starts a goroutine.
-func NewGpu(mmu *Mmu, lcd *LcdASCII, clk chan ClockType) *Gpu {
+func NewGpu(mmu Mmu, lcd Lcd, clk chan ClockType) *Gpu {
 	commander := NewCommander("gpu")
 	gpu := &Gpu{CommanderInterface: commander,
 		mmu: mmu, lcd: lcd, clk: clk,

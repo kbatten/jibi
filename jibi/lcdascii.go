@@ -9,6 +9,12 @@ const (
 	lcdHeight Byte = 144
 )
 
+type Lcd interface {
+	DrawLine(bl []Byte)
+	Blank()
+	DisableRender()
+}
+
 // An LcdASCII outputs as ascii characters to the terminal.
 type LcdASCII struct {
 	dr           bool
@@ -18,8 +24,7 @@ type LcdASCII struct {
 	squash       bool
 }
 
-// NewLcdASCII returns an LcdASCII object.
-func NewLcdASCII(squash bool) *LcdASCII {
+func NewLcd(squash bool) Lcd {
 	return &LcdASCII{squash: squash}
 }
 

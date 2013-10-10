@@ -35,7 +35,7 @@ type Cpu struct {
 	// interrupt master enable
 	ime Bit
 
-	mmu     *Mmu
+	mmu     Mmu
 	mmuKeys AddressKeys
 
 	// internal state
@@ -52,7 +52,7 @@ type Cpu struct {
 }
 
 // NewCpu creates a new Cpu with mmu connection.
-func NewCpu(mmu *Mmu, bios []Byte) *Cpu {
+func NewCpu(mmu Mmu, bios []Byte) *Cpu {
 	// use internal clock
 	// 1 machine cycle = 4 clock cycles
 	// machine cycles: 1.05MHz nop: 1 cycle
@@ -78,18 +78,15 @@ func NewCpu(mmu *Mmu, bios []Byte) *Cpu {
 	}
 
 	mmuKeys := AddressKeys(0)
-
-	if mmu != nil {
-		mmuKeys = mmu.LockAddr(AddrRom, mmuKeys)
-		mmuKeys = mmu.LockAddr(AddrRam, mmuKeys)
-		mmuKeys = mmu.LockAddr(AddrIF, mmuKeys)
-		mmuKeys = mmu.LockAddr(AddrDIV, mmuKeys)
-		mmuKeys = mmu.LockAddr(AddrTIMA, mmuKeys)
-		mmuKeys = mmu.LockAddr(AddrTMA, mmuKeys)
-		mmuKeys = mmu.LockAddr(AddrTAC, mmuKeys)
-		mmuKeys = mmu.LockAddr(AddrZero, mmuKeys)
-		mmuKeys = mmu.LockAddr(AddrIE, mmuKeys)
-	}
+	mmuKeys = mmu.LockAddr(AddrRom, mmuKeys)
+	mmuKeys = mmu.LockAddr(AddrRam, mmuKeys)
+	mmuKeys = mmu.LockAddr(AddrIF, mmuKeys)
+	mmuKeys = mmu.LockAddr(AddrDIV, mmuKeys)
+	mmuKeys = mmu.LockAddr(AddrTIMA, mmuKeys)
+	mmuKeys = mmu.LockAddr(AddrTMA, mmuKeys)
+	mmuKeys = mmu.LockAddr(AddrTAC, mmuKeys)
+	mmuKeys = mmu.LockAddr(AddrZero, mmuKeys)
+	mmuKeys = mmu.LockAddr(AddrIE, mmuKeys)
 
 	commander := NewCommander("cpu")
 	cpu := &Cpu{CommanderInterface: commander,

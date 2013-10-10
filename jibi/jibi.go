@@ -20,9 +20,9 @@ type Options struct {
 type Jibi struct {
 	O Options
 
-	mmu  *Mmu
+	mmu  Mmu
 	cpu  *Cpu
-	lcd  *LcdASCII
+	lcd  Lcd
 	gpu  *Gpu
 	cart *Cartridge
 	kp   *Keypad
@@ -33,7 +33,7 @@ func New(rom []Byte, options Options) Jibi {
 	cart := NewCartridge(rom)
 	mmu := NewMmu(cart)
 	cpu := NewCpu(mmu, bios)
-	lcd := NewLcdASCII(options.Squash)
+	lcd := NewLcd(options.Squash)
 	gpu := NewGpu(mmu, lcd, cpu.Clock())
 	kp := NewKeypad(mmu, options.Keypad)
 

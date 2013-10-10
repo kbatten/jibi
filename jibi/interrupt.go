@@ -49,7 +49,3 @@ func (i Interrupt) String() string {
 	}
 }
 
-func (mmu *Mmu) SetInterrupt(in Interrupt, ak AddressKeys) {
-	iflags := mmu.ReadByteAt(AddrIF, ak)
-	mmu.WriteByteAt(AddrIF, iflags|Byte(in), ak)
-}

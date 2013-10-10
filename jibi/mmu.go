@@ -43,7 +43,18 @@ const (
 // An Mmu is the memory management unit. Its purpose is to dispatch read and
 // write requeststo the appropriate module (cpu, gpu, etc) based on the memory
 // address. The Mmu is controlled by the cpu.
-type Mmu struct {
+type Mmu interface {
+	LockAddr(addr Worder, ak AddressKeys) AddressKeys
+	UnlockAddr(addr Worder, ak AddressKeys) AddressKeys
+	ReadByteAt(addr Worder, ak AddressKeys) Byte
+	WriteByteAt(addr Worder, b Byter, ak AddressKeys)
+	ReadIoByte(addr Worder, ak AddressKeys) (Byte, bool)
+	SetKeypad(kp *Keypad)
+	SetGpu(gpu *Gpu)
+	SetInterrupt(in Interrupt, ak AddressKeys)
+}
+
+type RomOnlyMmu struct {
 	// memory blocks and io
 	rom     []Byte
 	vram    []Byte
@@ -68,7 +79,7 @@ type Mmu struct {
 }
 
 // NewMmu creates a new Mmu with an optional bios that replaces 0x0000-0x00FF.
-func NewMmu(cart *Cartridge) *Mmu {
+func NewMmu(cart *Cartridge) Mmu {
 	var rom []Byte
 	if cart != nil {
 		rom = cart.Rom
@@ -77,7 +88,7 @@ func NewMmu(cart *Cartridge) *Mmu {
 	for i := uint16(1); i <= uint16(abLast); i = i << 1 {
 		locks[i] = new(sync.Mutex)
 	}
-	mmu := &Mmu{
+	mmu := &RomOnlyMmu{
 		rom:     rom,
 		vram:    make([]Byte, 0x2000),
 		ram:     make([]Byte, 0x2000),
@@ -144,15 +155,15 @@ func (a addressBlock) String() string {
 	return "abUNKNOWN"
 }
 
-func (m *Mmu) SetKeypad(kp *Keypad) {
+func (m *RomOnlyMmu) SetKeypad(kp *Keypad) {
 	m.kp = kp
 }
 
-func (m *Mmu) SetGpu(gpu *Gpu) {
+func (m *RomOnlyMmu) SetGpu(gpu *Gpu) {
 	m.gpu = gpu
 }
 
-func (m *Mmu) selectAddressBlock(addr Worder, rw string) (addressBlock, Word) {
+func (m *RomOnlyMmu) selectAddressBlock(addr Worder, rw string) (addressBlock, Word) {
 	a := addr.Word()
 	if a < AddrVRam {
 		return abRom, 0
@@ -196,7 +207,7 @@ func (m *Mmu) selectAddressBlock(addr Worder, rw string) (addressBlock, Word) {
 
 // LockAddr gets a lock for an address if not already in the provided
 // AddressKeys and appends it and returns this new key set.
-func (m *Mmu) LockAddr(addr Worder, ak AddressKeys) AddressKeys {
+func (m *RomOnlyMmu) LockAddr(addr Worder, ak AddressKeys) AddressKeys {
 	blk, _ := m.selectAddressBlock(addr, "lock")
 	if addressBlock(ak)&blk == blk {
 		// already have the key
@@ -206,7 +217,7 @@ func (m *Mmu) LockAddr(addr Worder, ak AddressKeys) AddressKeys {
 	return ak | AddressKeys(blk)
 }
 
-func (m *Mmu) UnlockAddr(addr Worder, ak AddressKeys) AddressKeys {
+func (m *RomOnlyMmu) UnlockAddr(addr Worder, ak AddressKeys) AddressKeys {
 	blk, _ := m.selectAddressBlock(addr, "unlock")
 	if addressBlock(ak)&blk != blk {
 		// don't have the key
@@ -216,7 +227,7 @@ func (m *Mmu) UnlockAddr(addr Worder, ak AddressKeys) AddressKeys {
 	return ak & AddressKeys(blk^0xFFFF)
 }
 
-func (m *Mmu) ReadByteAt(addr Worder, ak AddressKeys) Byte {
+func (m *RomOnlyMmu) ReadByteAt(addr Worder, ak AddressKeys) Byte {
 	blk, start := m.selectAddressBlock(addr, "read")
 	owner := addressBlock(ak)&blk == blk
 	if blk == abRom {
@@ -278,7 +289,7 @@ func (m *Mmu) ReadByteAt(addr Worder, ak AddressKeys) Byte {
 	return 0
 }
 
-func (m *Mmu) WriteByteAt(addr Worder, b Byter, ak AddressKeys) {
+func (m *RomOnlyMmu) WriteByteAt(addr Worder, b Byter, ak AddressKeys) {
 	blk, start := m.selectAddressBlock(addr, "write")
 	owner := addressBlock(ak)&blk == blk
 	elevated := addressBlock(ak)&abElevated == abElevated
@@ -373,7 +384,7 @@ func (m *Mmu) WriteByteAt(addr Worder, b Byter, ak AddressKeys) {
 	}
 }
 
-func (m *Mmu) ReadIoByte(addr Worder, ak AddressKeys) (Byte, bool) {
+func (m *RomOnlyMmu) ReadIoByte(addr Worder, ak AddressKeys) (Byte, bool) {
 	blk, _ := m.selectAddressBlock(addr, "write")
 	owner := addressBlock(ak)&blk == blk
 	if blk == abP1 {
@@ -386,7 +397,7 @@ func (m *Mmu) ReadIoByte(addr Worder, ak AddressKeys) (Byte, bool) {
 
 // incomplete, used for debugging
 // a return value of true means we can ignore this address
-func (m *Mmu) getAddressInfo(addr Worder) (string, bool) {
+func (m *RomOnlyMmu) getAddressInfo(addr Worder) (string, bool) {
 	a := addr.Word()
 	if 0x9C00 <= a && a <= 0x9FFF {
 		return "Background Map Data 2", false
@@ -532,4 +543,9 @@ func (m *mmio) readIoByte(owner bool) (Byte, bool) {
 		return m.write, q
 	}
 	panic(fmt.Sprintf("unhandled io read: 0x%04X", m.addr))
+}
+
+func (mmu *RomOnlyMmu) SetInterrupt(in Interrupt, ak AddressKeys) {
+	iflags := mmu.ReadByteAt(AddrIF, ak)
+	mmu.WriteByteAt(AddrIF, iflags|Byte(in), ak)
 }
