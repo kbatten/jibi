@@ -50,6 +50,7 @@ type Mmu struct {
 	ram     []Byte
 	oam     []Byte
 	ioP1    *mmio
+	div     Byte
 	tima    Byte
 	tma     Byte
 	tac     Byte
@@ -81,6 +82,7 @@ func NewMmu(cart *Cartridge) *Mmu {
 		ram:     make([]Byte, 0x2000),
 		oam:     make([]Byte, 0xA0),
 		ioP1:    newMmio(AddrP1),
+		div:     Byte(0),
 		tima:    Byte(0),
 		tma:     Byte(0),
 		tac:     Byte(0),
@@ -103,6 +105,7 @@ const (
 	abRam
 	abOam
 	abP1
+	abDIV
 	abTIMA
 	abTMA
 	abTAC
@@ -110,6 +113,7 @@ const (
 	abGpuRegs
 	abZero
 	abIE
+	abElevated
 	abLast = abIE
 )
 
@@ -157,6 +161,8 @@ func (m *Mmu) selectAddressBlock(addr Worder, rw string) (addressBlock, Word) {
 		return abOam, AddrOam
 	} else if AddrP1 == a {
 		return abP1, AddrP1
+	} else if AddrDIV == a {
+		return abDIV, AddrDIV
 	} else if AddrTIMA == a {
 		return abTIMA, AddrTIMA
 	} else if AddrTMA == a {
@@ -227,6 +233,10 @@ func (m *Mmu) ReadByteAt(addr Worder, ak AddressKeys) Byte {
 		}
 	} else if blk == abP1 {
 		return m.ioP1.readByte(owner)
+	} else if blk == abDIV {
+		if owner {
+			return m.div
+		}
 	} else if blk == abTIMA {
 		if owner {
 			return m.tima
@@ -266,6 +276,7 @@ func (m *Mmu) ReadByteAt(addr Worder, ak AddressKeys) Byte {
 func (m *Mmu) WriteByteAt(addr Worder, b Byter, ak AddressKeys) {
 	blk, start := m.selectAddressBlock(addr, "write")
 	owner := addressBlock(ak)&blk == blk
+	elevated := addressBlock(ak)&abElevated == abElevated
 	if blk == abRom {
 		return
 	} else if blk == abVRam {
@@ -289,6 +300,16 @@ func (m *Mmu) WriteByteAt(addr Worder, b Byter, ak AddressKeys) {
 			m.kp.RunCommand(CmdKeyCheck, nil)
 		}
 		return
+	} else if blk == abDIV {
+		if owner {
+			if elevated { // bypass normal handler
+				m.div = b.Byte()
+			} else {
+				m.div = Byte(0)
+				fmt.Println("normal write to DIV, clearing")
+			}
+			return
+		}
 	} else if blk == abTIMA {
 		if owner {
 			m.tima = b.Byte()

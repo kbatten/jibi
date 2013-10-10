@@ -27,6 +27,7 @@ type Cpu struct {
 	tClocks []*Clock // t clock cycle exported clocks
 	m       uint8    // machine cycles
 	t       uint8    // clock cycles
+	div     Word
 
 	// current instruction buffer
 	inst instruction
@@ -82,6 +83,7 @@ func NewCpu(mmu *Mmu, bios []Byte) *Cpu {
 		mmuKeys = mmu.LockAddr(AddrRom, mmuKeys)
 		mmuKeys = mmu.LockAddr(AddrRam, mmuKeys)
 		mmuKeys = mmu.LockAddr(AddrIF, mmuKeys)
+		mmuKeys = mmu.LockAddr(AddrDIV, mmuKeys)
 		mmuKeys = mmu.LockAddr(AddrTIMA, mmuKeys)
 		mmuKeys = mmu.LockAddr(AddrTMA, mmuKeys)
 		mmuKeys = mmu.LockAddr(AddrTAC, mmuKeys)
@@ -140,9 +142,9 @@ func (c *Cpu) cmdString(resp interface{}) {
 func (c *Cpu) str() string {
 	return fmt.Sprintf(`%s
 a:%s f:%s b:%s c:%s d:%s e:%s h:%s l:%s sp:%s pc:%s
-ime:%d %s`,
+ime:%d div:0x%04X %s`,
 		c.inst, c.a, c.f, c.b, c.c, c.d, c.e, c.h, c.l, c.sp, c.pc,
-		c.ime, c.f.flagsString())
+		c.ime, c.div, c.f.flagsString())
 }
 
 func (c *Cpu) String() string {
@@ -331,7 +333,15 @@ func (t *timer) stop() {
 	t.running = false
 }
 
-func (cpu *Cpu) runtimer() {
+func (cpu *Cpu) timers() {
+	// update divider
+	div := cpu.readByte(AddrDIV)
+	cpu.div = (cpu.div & 0x00FF) | (Word(div) << 8)
+	cpu.div += Word(cpu.t)
+	div = Byte(cpu.div >> 8)
+	cpu.mmu.WriteByteAt(AddrDIV, div, cpu.mmuKeys|AddressKeys(abElevated))
+
+	// update timer
 	tac := cpu.readByte(AddrTAC)
 	if tac&0x04 == 0x00 {
 		cpu.tima.stop()
@@ -362,7 +372,7 @@ func (c *Cpu) step(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32
 	c.interrupt() // handle interrupts
 	c.fetch()     // load next instruction into c.inst
 	c.execute()   // execute c.inst instruction
-	c.runtimer()  // handle tima, tma, tac
+	c.timers()    // handle tima, tma, tac
 
 	for _, clk := range c.tClocks {
 		clk.AddCycles(c.t)
