@@ -14,10 +14,12 @@ const (
 	AddrOam    Word = 0xFE00
 	AddrOamEnd Word = 0xFEA0
 
-	AddrP1  Word = 0xFF00
-	AddrDIV Word = 0xFF04
-	AddrTMA Word = 0xFF06
-	AddrIF  Word = 0xFF0F
+	AddrP1   Word = 0xFF00
+	AddrDIV  Word = 0xFF04
+	AddrTIMA Word = 0xFF05
+	AddrTMA  Word = 0xFF06
+	AddrTAC  Word = 0xFF07
+	AddrIF   Word = 0xFF0F
 
 	AddrGpuRegs    Word = 0xFF40
 	AddrLCDC       Word = 0xFF40
@@ -42,18 +44,19 @@ const (
 // write requeststo the appropriate module (cpu, gpu, etc) based on the memory
 // address. The Mmu is controlled by the cpu.
 type Mmu struct {
-	// memory blocks
+	// memory blocks and io
 	rom     []Byte
 	vram    []Byte
 	ram     []Byte
 	oam     []Byte
+	ioP1    *mmio
+	tima    Byte
+	tma     Byte
+	tac     Byte
+	ioIF    *mmio
 	gpuregs []Byte
 	zero    []Byte
 	ie      Byte
-
-	// memory mapped io
-	ioIF *mmio
-	ioP1 *mmio
 
 	// memory locks
 	locks []*sync.Mutex
@@ -77,8 +80,11 @@ func NewMmu(cart *Cartridge) *Mmu {
 		vram:    make([]Byte, 0x2000),
 		ram:     make([]Byte, 0x2000),
 		oam:     make([]Byte, 0xA0),
-		ioIF:    newMmio(AddrIF),
 		ioP1:    newMmio(AddrP1),
+		tima:    Byte(0),
+		tma:     Byte(0),
+		tac:     Byte(0),
+		ioIF:    newMmio(AddrIF),
 		gpuregs: make([]Byte, 12),
 		zero:    make([]Byte, 0x100),
 		locks:   locks,
@@ -97,6 +103,9 @@ const (
 	abRam
 	abOam
 	abP1
+	abTIMA
+	abTMA
+	abTAC
 	abIF
 	abGpuRegs
 	abZero
@@ -148,6 +157,12 @@ func (m *Mmu) selectAddressBlock(addr Worder, rw string) (addressBlock, Word) {
 		return abOam, AddrOam
 	} else if AddrP1 == a {
 		return abP1, AddrP1
+	} else if AddrTIMA == a {
+		return abTIMA, AddrTIMA
+	} else if AddrTMA == a {
+		return abTMA, AddrTMA
+	} else if AddrTAC == a {
+		return abTAC, AddrTAC
 	} else if AddrIF == a {
 		return abIF, AddrIF
 	} else if AddrGpuRegs <= a && a < AddrGpuRegsEnd {
@@ -212,6 +227,18 @@ func (m *Mmu) ReadByteAt(addr Worder, ak AddressKeys) Byte {
 		}
 	} else if blk == abP1 {
 		return m.ioP1.readByte(owner)
+	} else if blk == abTIMA {
+		if owner {
+			return m.tima
+		}
+	} else if blk == abTMA {
+		if owner {
+			return m.tma
+		}
+	} else if blk == abTAC {
+		if owner {
+			return m.tac
+		}
 	} else if blk == abIF {
 		return m.ioIF.readByte(owner)
 	} else if blk == abGpuRegs {
@@ -262,6 +289,21 @@ func (m *Mmu) WriteByteAt(addr Worder, b Byter, ak AddressKeys) {
 			m.kp.RunCommand(CmdKeyCheck, nil)
 		}
 		return
+	} else if blk == abTIMA {
+		if owner {
+			m.tima = b.Byte()
+			return
+		}
+	} else if blk == abTMA {
+		if owner {
+			m.tma = b.Byte()
+			return
+		}
+	} else if blk == abTAC {
+		if owner {
+			m.tac = b.Byte()
+			return
+		}
 	} else if blk == abIF {
 		m.ioIF.writeByte(b, owner)
 		return
@@ -316,13 +358,13 @@ func (m *Mmu) getAddressInfo(addr Worder) (string, bool) {
 	} else if a == 0xFF03 {
 		return "no clue", true
 	} else if a == 0xFF04 {
-		return "DIV", true // TODO: priority
+		return "DIV", false
 	} else if a == 0xFF05 {
-		return "TIMA", true // TODO: priority
+		return "TIMA", false
 	} else if a == 0xFF06 {
-		return "TMA", true // TODO: priority
+		return "TMA", false
 	} else if a == 0xFF07 {
-		return "TAC", true // TODO: priority
+		return "TAC", false
 	} else if 0xFF08 <= a && a <= 0xFF0E {
 		return "no clue", true
 	} else if a == 0xFF10 {

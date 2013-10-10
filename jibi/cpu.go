@@ -40,6 +40,7 @@ type Cpu struct {
 	// internal state
 	bios         []Byte
 	biosFinished bool
+	tima         timer
 
 	// notifications
 	notifyInst []chan string
@@ -81,6 +82,9 @@ func NewCpu(mmu *Mmu, bios []Byte) *Cpu {
 		mmuKeys = mmu.LockAddr(AddrRom, mmuKeys)
 		mmuKeys = mmu.LockAddr(AddrRam, mmuKeys)
 		mmuKeys = mmu.LockAddr(AddrIF, mmuKeys)
+		mmuKeys = mmu.LockAddr(AddrTIMA, mmuKeys)
+		mmuKeys = mmu.LockAddr(AddrTMA, mmuKeys)
+		mmuKeys = mmu.LockAddr(AddrTAC, mmuKeys)
 		mmuKeys = mmu.LockAddr(AddrZero, mmuKeys)
 		mmuKeys = mmu.LockAddr(AddrIE, mmuKeys)
 	}
@@ -230,19 +234,11 @@ func (c *Cpu) execute() {
 	}
 }
 
-/*
 // setInterrupt sets the specific interrupt.
 func (cpu *Cpu) setInterrupt(in Interrupt) {
-	if cpu.ime == 1 {
-		ie := cpu.readByte(AddrIE)
-		if ie&Byte(in) == Byte(in) {
-			iflag
-			cpu.iflag |= Byte(in)
-			cpu.writeByte(AddrIF, cpu.iflag)
-		}
-	}
+	iflags := cpu.mmu.ReadByteAt(AddrIF, 0)
+	cpu.mmu.WriteByteAt(AddrIF, iflags|Byte(in), 0)
 }
-*/
 
 // resetInterrupt resets the specific interrupt.
 func (cpu *Cpu) resetInterrupt(i Interrupt, iflag Byte) {
@@ -291,6 +287,66 @@ func (cpu *Cpu) interrupt() {
 	}
 }
 
+type timer struct {
+	v       Byte
+	div     uint16
+	running bool
+}
+
+func newTimer() *timer {
+	return &timer{}
+}
+
+func (t *timer) run(c uint8, f Byte, tma Byte) (Byte, bool) {
+	overflow := false
+
+	tmaBit := uint16(1)
+	if tma == 0x00 {
+		tmaBit = 0x0400 // 10th bit
+	} else if tma == 0x01 {
+		tmaBit = 0x0010 // 4th bit
+	} else if tma == 0x02 {
+		tmaBit = 0x0040 // 6th bit
+	} else if tma == 0x03 {
+		tmaBit = 0x0100 // 8th bit
+	}
+
+	p := t.div & tmaBit
+	t.div += uint16(c)
+	if p == 0 { // previously 0
+		if t.div&tmaBit == tmaBit { // now 1
+			t.v += 1
+			if t.v == 0 {
+				overflow = true
+			}
+		}
+	}
+
+	return t.v, overflow
+}
+
+func (t *timer) stop() {
+	t.v = 0
+	t.div = 0
+	t.running = false
+}
+
+func (cpu *Cpu) runtimer() {
+	tac := cpu.readByte(AddrTAC)
+	if tac&0x04 == 0x00 {
+		cpu.tima.stop()
+		return
+	}
+	tima := cpu.readByte(AddrTIMA)
+	tma := cpu.readByte(AddrTMA)
+
+	tima, interrupt := cpu.tima.run(cpu.t, tac&0x03, tma)
+	if interrupt {
+		cpu.setInterrupt(InterruptTimer)
+	}
+	cpu.writeByte(AddrTIMA, tima)
+}
+
 func (c *Cpu) step(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
 	// reset clocks
 	c.m = 0
@@ -306,6 +362,7 @@ func (c *Cpu) step(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32
 	c.interrupt() // handle interrupts
 	c.fetch()     // load next instruction into c.inst
 	c.execute()   // execute c.inst instruction
+	c.runtimer()  // handle tima, tma, tac
 
 	for _, clk := range c.tClocks {
 		clk.AddCycles(c.t)
