@@ -306,7 +306,6 @@ func (m *Mmu) WriteByteAt(addr Worder, b Byter, ak AddressKeys) {
 				m.div = b.Byte()
 			} else {
 				m.div = Byte(0)
-				fmt.Println("normal write to DIV, clearing")
 			}
 			return
 		}
@@ -398,16 +397,34 @@ func (m *Mmu) getAddressInfo(addr Worder) (string, bool) {
 		return "Sound Mode 1 register, Frequency lo (W)", true
 	} else if a == 0xFF14 {
 		return "Sound Mode 1 register, Frequency hi (R/W)", true
+	} else if a == 0xFF15 {
+		return "no clue", true
+	} else if a == 0xFF16 {
+		return "Sound Mode 2 register, Sound Length; Wave Pattern Duty (R/W)", true
 	} else if a == 0xFF17 {
 		return "Sound Mode 2 register, envelope (R/W)", true
+	} else if a == 0xFF18 {
+		return "Sound Mode 2 register, frequency lo data (W)", true
 	} else if a == 0xFF19 {
 		return "Sound Mode 2 register, frequency", true
 	} else if a == 0xFF1A {
 		return "Sound Mode 3 register, Sound on/off (R/W)", true
+	} else if a == 0xFF1B {
+		return "Sound Mode 3 register, sound length (R/W)", true
+	} else if a == 0xFF1C {
+		return "Sound Mode 3 register, Select output level (R/W)", true
+	} else if a == 0xFF1D {
+		return "Sound Mode 3 register, frequency's lower data (W)", true
+	} else if a == 0xFF1E {
+		return "Sound Mode 3 register, frequency's higher data (R/W)", true
+	} else if a == 0xFF1F {
+		return "no clue", true
 	} else if a == 0xFF20 {
 		return "Sound Mode 4 register, sound length (R/W)", true
 	} else if a == 0xFF21 {
 		return "Sound Mode 4 register, envelope (R/W)", true
+	} else if a == 0xFF22 {
+		return "Sound Mode 4 register, polynomial counter (R/W)", true
 	} else if a == 0xFF23 {
 		return "Sound Mode 4 register, counter/consecutive; inital (R/W)", true
 	} else if a == 0xFF24 {
@@ -416,10 +433,14 @@ func (m *Mmu) getAddressInfo(addr Worder) (string, bool) {
 		return "Selection of Sound output terminal (R/W)", true
 	} else if a == 0xFF26 {
 		return "Sound on/off (R/W)", true
+	} else if 0xFF27 <= a && a <= 0xFF2F {
+		return "no clue", true
 	} else if 0xFF30 <= a && a <= 0xFF3F {
 		return "Sound Sample RAM", true
 	} else if a == 0xFF47 {
 		return "BGP", false
+	} else if 0xFF4C == a {
+		return "no clue", true
 	} else if 0xFF4D <= a && a <= 0xFF7F {
 		return "GBC", true
 	} else if a == 0xFFFF {
