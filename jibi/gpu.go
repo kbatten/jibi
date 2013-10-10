@@ -269,6 +269,11 @@ func (g *Gpu) generateFrame() {
 	g.lockAddr(AddrVRam) // TODO: this should be in scanline vram
 	defer g.unlockAddr(AddrVRam)
 
+	// clear foreground buffer
+	for i := range g.fgBuffer {
+		g.fgBuffer[i] = 0
+	}
+
 	lcdc := g.readByte(AddrLCDC)
 	// read in map, tileset data
 	windowTilemap := (lcdc & 0x40) >> 6
