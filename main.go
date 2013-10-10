@@ -9,6 +9,7 @@ import (
 func main() {
 	doc := `usage: jibi [options] <rom>
 dev options:
+  --dev-status    show 1 second status
   --dev-norender  disable rendering
   --dev-nokeypad  disable keypad input
   --dev-quick     run a quick test cycle
@@ -23,6 +24,7 @@ dev options:
 	}
 
 	options := jibi.Options{
+		Status: args["--dev-status"].(bool),
 		Render: !args["--dev-norender"].(bool),
 		Keypad: !args["--dev-nokeypad"].(bool),
 		Quick:  args["--dev-quick"].(bool),

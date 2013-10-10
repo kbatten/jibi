@@ -7,6 +7,7 @@ import (
 
 // Options holds various options.
 type Options struct {
+	Status   bool
 	Skipbios bool
 	Render   bool
 	Keypad   bool
@@ -90,6 +91,9 @@ func (j Jibi) Run() {
 		respStr := make(chan chan string)
 		j.cpu.RunCommand(CmdOnInstruction, respStr)
 		inst = <-respStr
+		tickerC = nil
+	}
+	if !j.O.Status {
 		tickerC = nil
 	}
 	var timeout <-chan time.Time
