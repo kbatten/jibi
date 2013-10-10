@@ -556,7 +556,7 @@ var commandTable = map[opcode]command{
 		c.a.set(c.readByte(Word(0xFF00 + uint16(c.c.Byte()))))
 	}},
 	0xF3: command{"DI", 0, 4, func(c *Cpu) {
-		//c.ime = Bit(0)
+		c.ime = Bit(0)
 	}},
 	0xF4: command{"", 0, 0, func(c *Cpu) {}},
 	0xF5: command{"", 0, 0, func(c *Cpu) {}},

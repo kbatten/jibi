@@ -63,7 +63,8 @@ type Mmu struct {
 	locks []*sync.Mutex
 
 	// internal state
-	kp *Keypad
+	kp  *Keypad
+	gpu *Gpu
 }
 
 // NewMmu creates a new Mmu with an optional bios that replaces 0x0000-0x00FF.
@@ -145,6 +146,10 @@ func (a addressBlock) String() string {
 
 func (m *Mmu) SetKeypad(kp *Keypad) {
 	m.kp = kp
+}
+
+func (m *Mmu) SetGpu(gpu *Gpu) {
+	m.gpu = gpu
 }
 
 func (m *Mmu) selectAddressBlock(addr Worder, rw string) (addressBlock, Word) {
@@ -302,8 +307,8 @@ func (m *Mmu) WriteByteAt(addr Worder, b Byter, ak AddressKeys) {
 		return
 	} else if blk == abDIV {
 		if owner {
-			if elevated { // bypass normal handler
-				m.div = b.Byte()
+			if elevated {
+				m.div = b.Byte() // reset on write
 			} else {
 				m.div = Byte(0)
 			}
@@ -329,7 +334,24 @@ func (m *Mmu) WriteByteAt(addr Worder, b Byter, ak AddressKeys) {
 		return
 	} else if blk == abGpuRegs {
 		if owner {
-			m.gpuregs[addr.Word()-start] = b.Byte()
+			a := addr.Word()
+			bb := b.Byte()
+			if a == AddrLCDC {
+				prevBit7 := m.gpuregs[a-start] & 0x80
+				bit7 := bb & 0x80
+				if prevBit7 == 0 && bit7 != 0 {
+					m.gpu.RunCommand(CmdPlay, nil)
+				} else if prevBit7 != 0 && bit7 == 0 {
+					m.gpu.RunCommand(CmdPause, nil)
+					m.gpuregs[AddrLY-start] = 0
+				}
+			}
+			if a == AddrLY {
+				if !elevated {
+					bb = 0 // reset on write
+				}
+			}
+			m.gpuregs[a-start] = bb
 			return
 		}
 	} else if blk == abZero {

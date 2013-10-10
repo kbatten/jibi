@@ -37,6 +37,7 @@ func NewGpu(mmu *Mmu, lcd *LcdASCII, clk chan ClockType) *Gpu {
 		CmdFrameCounter: gpu.cmdFrameCounter,
 	}
 	commander.start(gpu.stateScanlineOam, cmdHandlers, clk)
+	mmu.SetGpu(gpu)
 	return gpu
 }
 
@@ -295,7 +296,6 @@ func (g *Gpu) generateFrame() {
 		}
 
 		if windowDisplay {
-			//panic("untested")
 			// TODO: this has to be handled line by line
 			// wx is read on screen redraw and after a scan line interrupt
 			// wy is read on screen redraw
@@ -379,8 +379,8 @@ func (g *Gpu) stateScanlineOam(first bool, t uint32) (CommanderStateFn, bool, ui
 			stat &= (0x04 ^ 0xFF)
 		}
 		g.writeByte(AddrSTAT, stat)
-		if stat&0x20 == 0x20 {
-			// interrupt
+		if (ly == lyc) && (stat&(0x40|0x20) == (0x40 | 0x20)) { // lyc=ly and mode 2
+			g.mmu.SetInterrupt(InterruptLCDC, g.mmuKeys)
 		}
 	}
 	if t >= 80 {
@@ -419,13 +419,23 @@ func (g *Gpu) stateHblank(first bool, t uint32) (CommanderStateFn, bool, uint32,
 	if first {
 		stat := g.readByte(AddrSTAT)
 		stat = stat&0x7C | 0x1 // mode 1
+		ly := g.readByte(AddrLY)
+		lyc := g.readByte(AddrLYC)
+		if ly == lyc {
+			stat |= 0x04
+		} else {
+			stat &= (0x04 ^ 0xFF)
+		}
 		g.writeByte(AddrSTAT, stat)
+		if (ly == lyc) && (stat&(0x40|0x10) == (0x40 | 0x10)) { // lyc=ly and mode 1
+			g.mmu.SetInterrupt(InterruptLCDC, g.mmuKeys)
+		}
 	}
 	if t >= 204 {
 		t -= 204
 		ly := g.readByte(AddrLY)
 		ly++
-		g.writeByte(AddrLY, ly)
+		g.mmu.WriteByteAt(AddrLY, ly, g.mmuKeys|AddressKeys(abElevated))
 		if ly == lcdHeight-1 {
 			return g.stateVblank, true, t, 456
 		}
@@ -443,7 +453,17 @@ func (g *Gpu) stateVblank(first bool, t uint32) (CommanderStateFn, bool, uint32,
 	if first {
 		stat := g.readByte(AddrSTAT)
 		stat = stat&0x7C | 0x0 // mode 0
+		ly := g.readByte(AddrLY)
+		lyc := g.readByte(AddrLYC)
+		if ly == lyc {
+			stat |= 0x04
+		} else {
+			stat &= (0x04 ^ 0xFF)
+		}
 		g.writeByte(AddrSTAT, stat)
+		if (ly == lyc) && (stat&(0x40|0x04) == (0x40 | 0x04)) { // lyc=ly and mode 0
+			g.mmu.SetInterrupt(InterruptLCDC, g.mmuKeys)
+		}
 		g.mmu.SetInterrupt(InterruptVblank, g.mmuKeys)
 		g.lcd.Blank()
 		g.generateFrame()
@@ -457,10 +477,10 @@ func (g *Gpu) stateVblank(first bool, t uint32) (CommanderStateFn, bool, uint32,
 		ly++
 		if ly > lcdHeight-1+10 {
 			ly = 0
-			g.writeByte(AddrLY, ly)
+			g.mmu.WriteByteAt(AddrLY, ly, g.mmuKeys|AddressKeys(abElevated))
 			return g.stateScanlineOam, true, t, 80
 		}
-		g.writeByte(AddrLY, ly)
+		g.mmu.WriteByteAt(AddrLY, ly, g.mmuKeys|AddressKeys(abElevated))
 		return g.stateVblank, false, t, 456
 	}
 	if !first {
