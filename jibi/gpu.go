@@ -88,8 +88,8 @@ func (g *Gpu) generateLine(line Byte) []Byte {
 	// TODO: draw up to 10 sprites
 
 	offset = uint16(line) * uint16(lcdWidth)
-	for i := uint16(0); i < uint16(lcdWidth); i++ {
-		b := g.fgBuffer[offset+i]
+	for i := range lbs {
+		b := g.fgBuffer[offset+uint16(i)]
 		if b > 0 {
 			lbs[i] = b
 		}
@@ -117,10 +117,9 @@ func (spr sprite) Paint(buffer []Byte) {
 }
 
 func (g *Gpu) getSprites(sizeId Byte) []sprite {
-	width := uint8(8)
+	height := uint8(8)
 	if sizeId == 1 {
-		width = 16
-		panic("unhandled sprite size")
+		height = 16
 	}
 	sprites := []sprite{}
 	obp0 := g.readByte(AddrOBP0)
@@ -130,7 +129,7 @@ func (g *Gpu) getSprites(sizeId Byte) []sprite {
 		spriteData[0] = g.readByte(spriteAddr)
 		spriteData[1] = g.readByte(spriteAddr + 1)
 		tileInd := g.readByte(spriteAddr + 2)
-		if width == 16 {
+		if height == 16 {
 			tileInd = tileInd & 0xFE
 		}
 		spriteData[2] = tileInd
@@ -143,7 +142,7 @@ func (g *Gpu) getSprites(sizeId Byte) []sprite {
 			obp = obp1
 		}
 		palette := byteToPalette(obp)
-		tileData := make([]Byte, width*2)
+		tileData := make([]Byte, height*2)
 		for i := range tileData {
 			tileData[i] = g.readByte(addrTile)
 			addrTile++
@@ -158,12 +157,13 @@ type tile struct {
 }
 
 func newTile(tileData []Byte, palette []Byte) tile {
+	height := uint8(len(tileData) / 2)
 	bitmap := []Byte{}
 	// 8x8 tiles
 	// convert tile data into 2bpp bitmap
 	addr := 0
 	xMax := uint8(len(tileData) / 2)
-	for yOff := uint8(0); yOff < 8; yOff++ {
+	for yOff := uint8(0); yOff < height; yOff++ {
 		l := tileData[addr]
 		h := tileData[addr+1]
 		addr += 2
@@ -185,14 +185,10 @@ func (t tile) Paint(buffer []Byte, x, y uint8) {
 	} else {
 		panic("unknown buffer type")
 	}
-	// TODO: sprite flags
-	xMax := uint16(8)
-	if len(t.bitmap) == 128 {
-		xMax = 16
-	}
+	yMax := uint16(len(t.bitmap) / 8)
 	addr := 0
-	for yOff := uint16(0); yOff < 8; yOff++ {
-		for xOff := uint16(0); xOff < xMax; xOff++ {
+	for yOff := uint16(0); yOff < yMax; yOff++ {
+		for xOff := uint16(0); xOff < 8; xOff++ {
 			px := t.bitmap[addr]
 			addr++
 			buffOff := uint16(x) + xOff + (uint16(y)+yOff)*width
@@ -299,7 +295,7 @@ func (g *Gpu) generateFrame() {
 		}
 
 		if windowDisplay {
-			panic("untested")
+			//panic("untested")
 			// TODO: this has to be handled line by line
 			// wx is read on screen redraw and after a scan line interrupt
 			// wy is read on screen redraw
