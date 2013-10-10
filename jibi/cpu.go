@@ -166,6 +166,9 @@ func (c *Cpu) readByte(addr Worder) Byte {
 	} else if AddrOam <= a && a <= AddrOamEnd {
 		c.lockAddr(AddrOam)
 		defer c.unlockAddr(AddrOam)
+	} else if AddrGpuRegs <= a && a <= AddrGpuRegsEnd {
+		c.lockAddr(AddrGpuRegs)
+		defer c.unlockAddr(AddrGpuRegs)
 	}
 	return c.mmu.ReadByteAt(addr, c.mmuKeys)
 }
@@ -178,6 +181,9 @@ func (c *Cpu) writeByte(addr Worder, b Byter) {
 	} else if AddrOam <= a && a <= AddrOamEnd {
 		c.lockAddr(AddrOam)
 		defer c.unlockAddr(AddrOam)
+	} else if AddrGpuRegs <= a && a <= AddrGpuRegsEnd {
+		c.lockAddr(AddrGpuRegs)
+		defer c.unlockAddr(AddrGpuRegs)
 	}
 	c.mmu.WriteByteAt(addr, b, c.mmuKeys)
 }
@@ -299,9 +305,7 @@ func (c *Cpu) step(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32
 	c.io()        // handle memory mapped io
 	c.interrupt() // handle interrupts
 	c.fetch()     // load next instruction into c.inst
-	c.lockAddr(AddrGpuRegs)
-	c.execute() // execute c.inst instruction
-	c.unlockAddr(AddrGpuRegs)
+	c.execute()   // execute c.inst instruction
 
 	for _, clk := range c.tClocks {
 		clk.AddCycles(c.t)

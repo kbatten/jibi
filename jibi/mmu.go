@@ -200,6 +200,10 @@ func (m *Mmu) ReadByteAt(addr Worder, ak AddressKeys) Byte {
 		if owner {
 			return m.ram[(addr.Word()-start)&0x1FFF]
 		}
+	} else if blk == abOam {
+		if owner {
+			return m.oam[addr.Word()-start]
+		}
 	} else if blk == abP1 {
 		return m.ioP1.readByte(owner)
 	} else if blk == abIF {

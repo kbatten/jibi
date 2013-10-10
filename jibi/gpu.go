@@ -86,7 +86,71 @@ func (g *Gpu) generateLine(line Byte) []Byte {
 	offset := uint16(line+scy)*256 + uint16(scx)
 	lbs := g.bgBuffer[offset : offset+uint16(lcdWidth)-1]
 	// TODO: draw up to 10 sprites
+
+	offset = uint16(line) * uint16(lcdWidth)
+	for i := uint16(0); i < uint16(lcdWidth); i++ {
+		b := g.fgBuffer[offset+i]
+		if b > 0 {
+			lbs[i] = b
+		}
+	}
 	return lbs
+}
+
+type sprite struct {
+	t tile
+	x uint8
+	y uint8
+	// TODO: implement attribs
+}
+
+func newSprite(spriteData, tileData, palette []Byte) sprite {
+	y := uint8(spriteData[0]) - 16
+	x := uint8(spriteData[1]) - 8
+	t := newTile(tileData, palette)
+	spr := sprite{t, x, y}
+	return spr
+}
+
+func (spr sprite) Paint(buffer []Byte) {
+	spr.t.Paint(buffer, spr.x, spr.y)
+}
+
+func (g *Gpu) getSprites(sizeId Byte) []sprite {
+	width := uint8(8)
+	if sizeId == 1 {
+		width = 16
+		panic("unhandled sprite size")
+	}
+	sprites := []sprite{}
+	obp0 := g.readByte(AddrOBP0)
+	obp1 := g.readByte(AddrOBP1)
+	for spriteAddr := AddrOam; spriteAddr < AddrOamEnd; spriteAddr += 4 {
+		spriteData := make([]Byte, 4)
+		spriteData[0] = g.readByte(spriteAddr)
+		spriteData[1] = g.readByte(spriteAddr + 1)
+		tileInd := g.readByte(spriteAddr + 2)
+		if width == 16 {
+			tileInd = tileInd & 0xFE
+		}
+		spriteData[2] = tileInd
+		spriteData[3] = g.readByte(spriteAddr + 3)
+		addrTile := 0x8800 + Word(Byte(tileInd+0x80))*16
+		obp := Byte(0)
+		if spriteData[3]&0x10 == 0 {
+			obp = obp0
+		} else {
+			obp = obp1
+		}
+		palette := byteToPalette(obp)
+		tileData := make([]Byte, width*2)
+		for i := range tileData {
+			tileData[i] = g.readByte(addrTile)
+			addrTile++
+		}
+		sprites = append(sprites, newSprite(spriteData, tileData, palette))
+	}
+	return sprites
 }
 
 type tile struct {
@@ -131,7 +195,10 @@ func (t tile) Paint(buffer []Byte, x, y uint8) {
 		for xOff := uint16(0); xOff < xMax; xOff++ {
 			px := t.bitmap[addr]
 			addr++
-			buffer[uint16(x)+xOff+(uint16(y)+yOff)*width] = px
+			buffOff := uint16(x) + xOff + (uint16(y)+yOff)*width
+			if int(buffOff) <= len(buffer) {
+				buffer[buffOff] = px
+			}
 		}
 	}
 }
@@ -199,14 +266,17 @@ func byteToPalette(p Byte) []Byte {
 }
 
 func (g *Gpu) generateFrame() {
+	g.lockAddr(AddrVRam) // TODO: this should be in scanline vram
+	defer g.unlockAddr(AddrVRam)
+
 	lcdc := g.readByte(AddrLCDC)
 	// read in map, tileset data
 	windowTilemap := (lcdc & 0x40) >> 6
 	windowDisplay := lcdc&0x20 == 0x20
 	bgTileset := (lcdc & 0x10) >> 4
 	bgTilemap := (lcdc & 0x08) >> 3
-	//objSpriteSize := (lcdc & 0x04) >> 2
-	//objDisplay := lcdc&0x02 == 0x02
+	objSpriteSize := (lcdc & 0x04) >> 2
+	objDisplay := lcdc&0x02 == 0x02
 	bgWinDisplay := lcdc&0x01 == 0x01
 
 	// draw background
@@ -224,6 +294,7 @@ func (g *Gpu) generateFrame() {
 		}
 
 		if windowDisplay {
+			panic("untested")
 			// TODO: this has to be handled line by line
 			// wx is read on screen redraw and after a scan line interrupt
 			// wy is read on screen redraw
@@ -239,6 +310,16 @@ func (g *Gpu) generateFrame() {
 					y += 8
 				}
 			}
+		}
+	}
+
+	// draw sprites (oam)
+	if objDisplay {
+		g.lockAddr(AddrOam) // TODO: this should be in scanline oam
+		sprites := g.getSprites(objSpriteSize)
+		g.unlockAddr(AddrOam)
+		for _, spr := range sprites {
+			spr.Paint(g.fgBuffer)
 		}
 	}
 	/*
@@ -289,7 +370,17 @@ func (g *Gpu) stateScanlineOam(first bool, t uint32) (CommanderStateFn, bool, ui
 		//g.lockAddr(AddrOam)
 		stat := g.readByte(AddrSTAT)
 		stat = stat&0x7C | 0x2 // mode 2
+		ly := g.readByte(AddrLY)
+		lyc := g.readByte(AddrLYC)
+		if ly == lyc {
+			stat |= 0x04
+		} else {
+			stat &= (0x04 ^ 0xFF)
+		}
 		g.writeByte(AddrSTAT, stat)
+		if stat&0x20 == 0x20 {
+			// interrupt
+		}
 	}
 	if t >= 80 {
 		t -= 80
@@ -354,9 +445,7 @@ func (g *Gpu) stateVblank(first bool, t uint32) (CommanderStateFn, bool, uint32,
 		g.writeByte(AddrSTAT, stat)
 		g.mmu.SetInterrupt(InterruptVblank, g.mmuKeys)
 		g.lcd.Blank()
-		g.lockAddr(AddrVRam) // TODO: this should be in scanline vram
 		g.generateFrame()
-		g.unlockAddr(AddrVRam)
 		for _, clk := range g.frameCounters {
 			clk.AddCycles(1)
 		}
