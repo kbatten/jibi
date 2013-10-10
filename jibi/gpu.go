@@ -196,7 +196,7 @@ func (t tile) Paint(buffer []Byte, x, y uint8) {
 			px := t.bitmap[addr]
 			addr++
 			buffOff := uint16(x) + xOff + (uint16(y)+yOff)*width
-			if int(buffOff) <= len(buffer) {
+			if int(buffOff) < len(buffer) {
 				buffer[buffOff] = px
 			}
 		}
