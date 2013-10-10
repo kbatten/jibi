@@ -264,10 +264,10 @@ func (m *Mmu) ReadByteAt(addr Worder, ak AddressKeys) Byte {
 			return m.ie
 		}
 	}
-	if !owner {
-		panic(fmt.Sprintf("unauthorized read: 0x%04X", addr.Word()))
-	}
 	if u, v := m.getAddressInfo(addr); !v {
+		if !owner {
+			panic(fmt.Sprintf("unauthorized read: 0x%04X", addr.Word()))
+		}
 		panic(fmt.Sprintf("unhandled memory read: 0x%04X - %s", addr.Word(), u))
 	}
 	return 0
@@ -343,10 +343,10 @@ func (m *Mmu) WriteByteAt(addr Worder, b Byter, ak AddressKeys) {
 			return
 		}
 	}
-	if !owner {
-		panic(fmt.Sprintf("unauthorized write: 0x%04X 0x%02X", addr.Word(), b.Byte()))
-	}
 	if u, v := m.getAddressInfo(addr); !v {
+		if !owner {
+			panic(fmt.Sprintf("unauthorized write: 0x%04X 0x%02X", addr.Word(), b.Byte()))
+		}
 		panic(fmt.Sprintf("unhandled memory write: 0x%04X - %s", addr.Word(), u))
 	}
 }
@@ -363,10 +363,13 @@ func (m *Mmu) ReadIoByte(addr Worder, ak AddressKeys) (Byte, bool) {
 }
 
 // incomplete, used for debugging
+// a return value of true means we can ignore this address
 func (m *Mmu) getAddressInfo(addr Worder) (string, bool) {
 	a := addr.Word()
 	if 0x9C00 <= a && a <= 0x9FFF {
 		return "Background Map Data 2", false
+	} else if 0xA000 <= a && a <= 0xBFFF {
+		return "Cartridge Ram", true // TODO: find out what should happen in rom only
 	} else if 0xFEA0 <= a && a <= 0xFEFF {
 		return "unusable memory", true
 	} else if a == 0xFF00 {
