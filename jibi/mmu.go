@@ -353,6 +353,8 @@ func (m *Mmu) getAddressInfo(addr Worder) (string, bool) {
 		return "Selection of Sound output terminal (R/W)", true
 	} else if a == 0xFF26 {
 		return "Sound on/off (R/W)", true
+	} else if 0xFF30 <= a && a <= 0xFF3F {
+		return "Sound Sample RAM", true
 	} else if a == 0xFF47 {
 		return "BGP", false
 	} else if 0xFF4D <= a && a <= 0xFF7F {
