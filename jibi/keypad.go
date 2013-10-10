@@ -200,10 +200,12 @@ func (k *Keypad) cmdKeyCheck(data interface{}) {
 	p15 := (b & 0x20) >> 5
 	p14 := (b & 0x10) >> 4
 
-	p1310 := p14&k.keys[KeyRight].v | p15&k.keys[KeyA].v +
-		(p14&k.keys[KeyLeft].v|p15&k.keys[KeyB].v)<<1 +
-		(p14&k.keys[KeyUp].v|p15&k.keys[KeySelect].v)<<2 +
-		(p14&k.keys[KeyDown].v|p15&k.keys[KeyStart].v)<<3
+	p13 := (p14 | k.keys[KeyRight].v) & (p15 | k.keys[KeyA].v)
+	p12 := (p14 | k.keys[KeyLeft].v) & (p15 | k.keys[KeyB].v)
+	p11 := (p14 | k.keys[KeyUp].v) & (p15 | k.keys[KeySelect].v)
+	p10 := (p14 | k.keys[KeyDown].v) & (p15 | k.keys[KeyStart].v)
+
+	p1310 := p10 | (p11 << 1) | (p12 << 2) | (p13 << 3)
 
 	k.writeByte(AddrP1, p1310)
 }
