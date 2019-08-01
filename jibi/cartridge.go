@@ -102,7 +102,12 @@ func (ct cartridgeType) String() string {
 	case 0xFE:
 		return "FE-HudsonHuC_3"
 	default:
-		return fmt.Sprintf("%0X-UNKNOWN", ct)
+		var ctUint8 = uint8(ct)
+		if ctUint8 <= 0xF {
+			return fmt.Sprintf("0%X-UNKNOWN", ctUint8)
+		} else {
+			return fmt.Sprintf("%X-UNKNOWN", ctUint8)
+		}
 	}
 }
 

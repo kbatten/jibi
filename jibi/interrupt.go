@@ -48,4 +48,3 @@ func (i Interrupt) String() string {
 		return "UNKNOWN"
 	}
 }
-
