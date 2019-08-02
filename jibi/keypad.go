@@ -210,11 +210,11 @@ func (k *Keypad) cmdKeyCheck(data interface{}) {
 	k.writeByte(AddrP1, p1310)
 }
 
-func (kp *Keypad) readByte(addr Worder) Byte {
+func (kp *Keypad) readByte(addr Word) Byte {
 	return kp.mmu.ReadByteAt(addr, kp.mmuKeys)
 }
 
-func (kp *Keypad) writeByte(addr Worder, b Byter) {
+func (kp *Keypad) writeByte(addr Word, b Byte) {
 	kp.mmu.WriteByteAt(addr, b, kp.mmuKeys)
 }
 

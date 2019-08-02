@@ -99,7 +99,7 @@ func TestJp(t *testing.T) {
 	// JP nn
 	cpu.fetch()
 	cpu.execute()
-	if cpu.pc.Word() != Word(0x6721) {
+	if cpu.pc != Word(0x6721) {
 		t.Error()
 	}
 }
@@ -112,7 +112,7 @@ func TestJr(t *testing.T) {
 	cpu.pc = register16(0x04)
 	cpu.fetch()
 	cpu.execute()
-	if cpu.pc.Word() != Word(0x04+0x02+0x05) {
+	if cpu.pc != Word(0x04+0x02+0x05) {
 		t.Error()
 	}
 
@@ -120,7 +120,7 @@ func TestJr(t *testing.T) {
 	cpu.pc = register16(0x06)
 	cpu.fetch()
 	cpu.execute()
-	if cpu.pc.Word() != Word(0x06+0x02-0x04) {
+	if cpu.pc != Word(0x06+0x02-0x04) {
 		t.Error()
 	}
 }
@@ -134,7 +134,7 @@ func TestJrNF(t *testing.T) {
 	cpu.f.setFlag(flagZ)
 	cpu.fetch()
 	cpu.execute()
-	if cpu.pc.Word() != Word(0x04+0x02) {
+	if cpu.pc != Word(0x04+0x02) {
 		t.Error()
 	}
 
@@ -143,7 +143,7 @@ func TestJrNF(t *testing.T) {
 	cpu.f.resetFlag(flagZ)
 	cpu.fetch()
 	cpu.execute()
-	if cpu.pc.Word() != Word(0x04+0x02+0x05) {
+	if cpu.pc != Word(0x04+0x02+0x05) {
 		t.Error()
 	}
 
@@ -152,7 +152,7 @@ func TestJrNF(t *testing.T) {
 	cpu.f.resetFlag(flagZ)
 	cpu.fetch()
 	cpu.execute()
-	if cpu.pc.Word() != Word(0x06+0x02-0x04) {
+	if cpu.pc != Word(0x06+0x02-0x04) {
 		t.Error()
 	}
 }
@@ -166,7 +166,7 @@ func TestJrF(t *testing.T) {
 	cpu.f.resetFlag(flagZ)
 	cpu.fetch()
 	cpu.execute()
-	if cpu.pc.Word() != Word(0x04+0x02) {
+	if cpu.pc != Word(0x04+0x02) {
 		t.Error()
 	}
 
@@ -175,7 +175,7 @@ func TestJrF(t *testing.T) {
 	cpu.f.setFlag(flagZ)
 	cpu.fetch()
 	cpu.execute()
-	if cpu.pc.Word() != Word(0x04+0x02+0x05) {
+	if cpu.pc != Word(0x04+0x02+0x05) {
 		t.Error()
 	}
 
@@ -184,7 +184,7 @@ func TestJrF(t *testing.T) {
 	cpu.f.setFlag(flagZ)
 	cpu.fetch()
 	cpu.execute()
-	if cpu.pc.Word() != Word(0x06+0x02-0x04) {
+	if cpu.pc != Word(0x06+0x02-0x04) {
 		t.Error()
 	}
 }
@@ -198,13 +198,13 @@ func TestCall(t *testing.T) {
 	// CALL nn
 	cpu.fetch()
 	cpu.execute()
-	if cpu.pc.Word() != Word(0x0140) {
+	if cpu.pc != Word(0x0140) {
 		t.Error()
 	}
-	if cpu.sp.Word() != Word(0xFFFC) {
+	if cpu.sp != Word(0xFFFC) {
 		t.Error()
 	}
-	w := BytesToWord(cpu.readByte(cpu.sp.Word()+1), cpu.readByte(cpu.sp.Word()))
+	w := BytesToWord(cpu.readByte(cpu.sp+1), cpu.readByte(cpu.sp))
 	if w != Word(0x0003) {
 		t.Errorf(fmt.Sprintf("0x%04X", w))
 	}
@@ -219,10 +219,10 @@ func TestRet(t *testing.T) {
 	// RET
 	cpu.fetch()
 	cpu.execute()
-	if cpu.sp.Word() != Word(0x03) {
+	if cpu.sp != Word(0x03) {
 		t.Error()
 	}
-	if cpu.pc.Word() != Word(0x0140) {
+	if cpu.pc != Word(0x0140) {
 		t.Error()
 	}
 }
@@ -237,10 +237,10 @@ func TestPush(t *testing.T) {
 	cpu.b.setWord(0x6004)
 	cpu.fetch()
 	cpu.execute()
-	if cpu.sp.Word() != Word(0xFFFC) {
+	if cpu.sp != Word(0xFFFC) {
 		t.Error()
 	}
-	w := BytesToWord(cpu.readByte(cpu.sp.Word()+1), cpu.readByte(cpu.sp.Word()))
+	w := BytesToWord(cpu.readByte(cpu.sp+1), cpu.readByte(cpu.sp))
 	if w != Word(0x6004) {
 		t.Errorf(fmt.Sprintf("0x%04X", w))
 	}
@@ -255,7 +255,7 @@ func TestPop(t *testing.T) {
 	// POP BC
 	cpu.fetch()
 	cpu.execute()
-	if cpu.sp.Word() != Word(0x06) {
+	if cpu.sp != Word(0x06) {
 		t.Error()
 	}
 	if cpu.b.Word() != Word(0x2003) {

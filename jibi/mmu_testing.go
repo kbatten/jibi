@@ -8,24 +8,24 @@ func newTestMmu() Mmu {
 	return TestMmu{make([]Byte, 0x10000)}
 }
 
-func (tm TestMmu) LockAddr(addr Worder, ak AddressKeys) AddressKeys {
+func (tm TestMmu) LockAddr(addr Word, ak AddressKeys) AddressKeys {
 	return AddressKeys(0)
 }
 
-func (tm TestMmu) UnlockAddr(addr Worder, ak AddressKeys) AddressKeys {
+func (tm TestMmu) UnlockAddr(addr Word, ak AddressKeys) AddressKeys {
 	return AddressKeys(0)
 }
 
-func (tm TestMmu) ReadByteAt(addr Worder, ak AddressKeys) Byte {
-	return tm.ram[addr.Word()]
+func (tm TestMmu) ReadByteAt(addr Word, ak AddressKeys) Byte {
+	return tm.ram[addr]
 }
 
-func (tm TestMmu) WriteByteAt(addr Worder, b Byter, ak AddressKeys) {
-	tm.ram[addr.Word()] = b.Byte()
+func (tm TestMmu) WriteByteAt(addr Word, b Byte, ak AddressKeys) {
+	tm.ram[addr] = b
 }
 
-func (tm TestMmu) ReadIoByte(addr Worder, ak AddressKeys) (Byte, bool) {
-	return tm.ram[addr.Word()], true
+func (tm TestMmu) ReadIoByte(addr Word, ak AddressKeys) (Byte, bool) {
+	return tm.ram[addr], true
 }
 
 func (tm TestMmu) SetGpu(gpu *Gpu) {

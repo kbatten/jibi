@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-// BytesToWord simply converts two Byter objects into a Word.
-func BytesToWord(high, low Byter) Word {
-	return Word(uint16(high.Byte())<<8 + uint16(low.Byte()))
+// BytesToWord simply converts two Byte objects into a Word.
+func BytesToWord(high, low Byte) Word {
+	return Word(uint16(high)<<8 + uint16(low))
 }
 
 func readRomZipFile(filename string) ([]byte, error) {

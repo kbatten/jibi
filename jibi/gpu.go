@@ -51,11 +51,11 @@ func (g *Gpu) cmdFrameCounter(resp interface{}) {
 	}
 }
 
-func (g *Gpu) readByte(addr Worder) Byte {
+func (g *Gpu) readByte(addr Word) Byte {
 	return g.mmu.ReadByteAt(addr, g.mmuKeys)
 }
 
-func (g *Gpu) writeByte(addr Worder, b Byter) {
+func (g *Gpu) writeByte(addr Word, b Byte) {
 	g.mmu.WriteByteAt(addr, b, g.mmuKeys)
 }
 
@@ -356,11 +356,11 @@ func (g *Gpu) generateFrame() {
 	*/
 }
 
-func (g *Gpu) lockAddr(addr Worder) {
+func (g *Gpu) lockAddr(addr Word) {
 	g.mmuKeys = g.mmu.LockAddr(addr, g.mmuKeys)
 }
 
-func (g *Gpu) unlockAddr(addr Worder) {
+func (g *Gpu) unlockAddr(addr Word) {
 	g.mmuKeys = g.mmu.UnlockAddr(addr, g.mmuKeys)
 }
 

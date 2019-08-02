@@ -140,8 +140,8 @@ func (c *Commander) String() string {
 // A MemoryCommander is the generic interface for something that is both a
 // MemoryDevice and a Commander embedded interface.
 type MemoryCommander interface {
-	ReadByteAt(Worder, chan Byte)
-	WriteByteAt(Worder, Byter)
+	ReadByteAt(Word, chan Byte)
+	WriteByteAt(Word, Byte)
 	CommanderInterface
 }
 

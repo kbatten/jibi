@@ -26,7 +26,7 @@ func (r register8) Word() Word {
 	if r.lrp == nil {
 		panic("lower register is nil")
 	}
-	return BytesToWord(r, r.lrp)
+	return BytesToWord(r.Byte(), r.lrp.Byte())
 }
 
 func (r register8) High() Byte {
@@ -44,8 +44,8 @@ func (r register8) Byte() Byte {
 	return *r.vp & r.mask
 }
 
-func (r register8) set(v Byter) {
-	*r.vp = v.Byte()
+func (r register8) set(v Byte) {
+	*r.vp = v
 }
 
 func (r register8) reset() {
@@ -96,39 +96,19 @@ func (r register8) flagsString() string {
 //	return *r.vp & r.mask
 //}
 
-func (r register8) setFlag(f Byter) {
-	*r.vp |= f.Byte()
+func (r register8) setFlag(f Byte) {
+	*r.vp |= f
 }
 
-func (r register8) resetFlag(f Byter) {
-	*r.vp &= (f.Byte() ^ 0xFF)
+func (r register8) resetFlag(f Byte) {
+	*r.vp &= (f ^ 0xFF)
 }
 
-func (r register8) getFlag(f Byter) bool {
-	if *r.vp&f.Byte() == f.Byte() {
+func (r register8) getFlag(f Byte) bool {
+	if *r.vp&f == f {
 		return true
 	}
 	return false
 }
 
-type register16 uint16
-
-func (r register16) Uint16() uint16 {
-	return uint16(r)
-}
-
-func (r register16) Word() Word {
-	return Word(r)
-}
-
-func (r register16) High() Byte {
-	return Byte(r >> 8)
-}
-
-func (r register16) Low() Byte {
-	return Byte(r)
-}
-
-func (r register16) String() string {
-	return fmt.Sprintf("0x%04X", uint16(r))
-}
+type register16 = Word

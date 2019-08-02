@@ -138,7 +138,7 @@ func (c *Cpu) cmdString(resp interface{}) {
 
 func (c *Cpu) str() string {
 	return fmt.Sprintf(`%s
-a:%s f:%s b:%s c:%s d:%s e:%s h:%s l:%s sp:%s pc:%s
+a:%s f:%s b:%s c:%s d:%s e:%s h:%s l:%s sp:%d pc:%d
 ime:%d div:0x%04X %s`,
 		c.inst, c.a, c.f, c.b, c.c, c.d, c.e, c.h, c.l, c.sp, c.pc,
 		c.ime, c.div, c.f.flagsString())
@@ -150,56 +150,54 @@ func (c *Cpu) String() string {
 	return <-resp
 }
 
-func (c *Cpu) lockAddr(addr Worder) {
+func (c *Cpu) lockAddr(addr Word) {
 	c.mmuKeys = c.mmu.LockAddr(addr, c.mmuKeys)
 }
 
-func (c *Cpu) unlockAddr(addr Worder) {
+func (c *Cpu) unlockAddr(addr Word) {
 	c.mmuKeys = c.mmu.UnlockAddr(addr, c.mmuKeys)
 }
 
-func (c *Cpu) readByte(addr Worder) Byte {
-	a := addr.Word()
-	if !c.biosFinished && a <= 0xFF {
-		return c.bios[a]
+func (c *Cpu) readByte(addr Word) Byte {
+	if !c.biosFinished && addr <= 0xFF {
+		return c.bios[addr]
 	}
-	if AddrVRam <= a && a <= AddrRam {
+	if AddrVRam <= addr && addr <= AddrRam {
 		c.lockAddr(AddrVRam)
 		defer c.unlockAddr(AddrVRam)
-	} else if AddrOam <= a && a <= AddrOamEnd {
+	} else if AddrOam <= addr && addr <= AddrOamEnd {
 		c.lockAddr(AddrOam)
 		defer c.unlockAddr(AddrOam)
-	} else if AddrGpuRegs <= a && a <= AddrGpuRegsEnd {
+	} else if AddrGpuRegs <= addr && addr <= AddrGpuRegsEnd {
 		c.lockAddr(AddrGpuRegs)
 		defer c.unlockAddr(AddrGpuRegs)
 	}
 	return c.mmu.ReadByteAt(addr, c.mmuKeys)
 }
 
-func (c *Cpu) writeByte(addr Worder, b Byter) {
-	a := addr.Word()
-	if AddrVRam <= a && a <= AddrRam {
+func (c *Cpu) writeByte(addr Word, b Byte) {
+	if AddrVRam <= addr && addr <= AddrRam {
 		c.lockAddr(AddrVRam)
 		defer c.unlockAddr(AddrVRam)
-	} else if AddrOam <= a && a <= AddrOamEnd {
+	} else if AddrOam <= addr && addr <= AddrOamEnd {
 		c.lockAddr(AddrOam)
 		defer c.unlockAddr(AddrOam)
-	} else if AddrGpuRegs <= a && a <= AddrGpuRegsEnd {
+	} else if AddrGpuRegs <= addr && addr <= AddrGpuRegsEnd {
 		c.lockAddr(AddrGpuRegs)
 		defer c.unlockAddr(AddrGpuRegs)
 	}
 	c.mmu.WriteByteAt(addr, b, c.mmuKeys)
 }
 
-func (c *Cpu) readWord(addr Worder) Word {
+func (c *Cpu) readWord(addr Word) Word {
 	l := c.readByte(addr)
-	h := c.readByte(addr.Word() + 1)
+	h := c.readByte(addr + 1)
 	return BytesToWord(h, l)
 }
 
-func (c *Cpu) writeWord(addr Worder, w Worder) {
+func (c *Cpu) writeWord(addr Word, w Word) {
 	c.writeByte(addr, w.Low())
-	c.writeByte(addr.Word()+1, w.High())
+	c.writeByte(addr+1, w.High())
 }
 
 // Clock returns a new channel that holds acumulating clock ticks.
