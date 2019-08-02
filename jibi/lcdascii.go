@@ -31,7 +31,6 @@ func NewLcd(squash bool) Lcd {
 // DrawLine draws the Byte Slice to the current line index, then advances the
 // index.
 func (lcd *LcdASCII) DrawLine(bl []Byte) {
-
 	blO := make([]Byte, len(bl))
 	copy(blO, bl)
 	drawLine := uint8(float64(lcd.lineIndex) * 50.0 / float64(lcdHeight))
@@ -43,53 +42,55 @@ func (lcd *LcdASCII) DrawLine(bl []Byte) {
 			}
 		}
 	}
-	ls := ""
-	for _, c := range bl {
-		o := " "
+
+	ls := make([]byte, lcdWidth)
+	var o byte
+	for i, c := range bl {
+		o = ' '
 		if c == 1 {
 			if lcd.squash {
-				o = " " // 0001
+				o = ' ' // 0001
 			} else {
-				o = "."
+				o = '.'
 			}
 		} else if c == 2 {
 			if lcd.squash {
-				o = "." // 0010
+				o = '.' // 0010
 			} else {
-				o = "_"
+				o = '_'
 			}
 		} else if c == 3 {
 			if lcd.squash {
-				o = "." // 0011
+				o = '.' // 0011
 			} else {
-				o = "*"
+				o = '.'
 			}
 		} else if c == 4 {
-			o = " " // 0100
+			o = ' ' // 0100
 		} else if c == 5 {
-			o = " " // 0101
+			o = ' ' // 0101
 		} else if c == 6 {
-			o = "." //0110
+			o = '.' //0110
 		} else if c == 7 {
-			o = "." // 0111
+			o = '.' // 0111
 		} else if c == 8 {
-			o = "'" // 1000
+			o = '\'' // 1000
 		} else if c == 9 {
-			o = "'" // 1001
+			o = '\'' // 1001
 		} else if c == 10 {
-			o = ":" // 1010
+			o = ':' // 1010
 		} else if c == 11 {
-			o = ":" // 1011
+			o = ':' // 1011
 		} else if c == 12 {
-			o = "'" // 1100
+			o = '\'' // 1100
 		} else if c == 13 {
-			o = "'" // 1101
+			o = '\'' // 1101
 		} else if c == 14 {
-			o = ":" // 1110
+			o = ':' // 1110
 		} else if c == 15 {
-			o = ":" // 1111
+			o = ':' // 1111
 		}
-		ls += o
+		ls[i] = o
 	}
 	if lcd.dr == false {
 		if lcd.squash {
