@@ -11,7 +11,7 @@ type Options struct {
 	Skipbios bool
 	Render   bool
 	Keypad   bool
-	Quick    bool
+	Quick    uint64
 	Squash   bool
 	Every    bool
 }
@@ -96,10 +96,11 @@ func (j Jibi) Run() {
 	if !j.O.Status {
 		tickerC = nil
 	}
-	var timeout <-chan time.Time
-	if j.O.Quick {
-		timeout = time.After(20 * time.Second)
+	var totalTicksClk chan ClockType
+	if j.O.Quick > 0 {
+		totalTicksClk = j.cpu.Clock()
 	}
+
 	cpuHz := float64(0)
 	cpuCps := ClockType(0)
 	cpuLps := ClockType(0)
@@ -109,12 +110,16 @@ func (j Jibi) Run() {
 	kpCps := ClockType(0)
 	kpLps := ClockType(0)
 	count := float64(-1)
+	totalTicks :=  uint64(0)
 	for running := true; running; {
 		select {
-		case <-timeout:
-			running = false
 		case u := <-inst:
 			fmt.Println(u)
+		case t := <-totalTicksClk:
+			totalTicks += uint64(t)
+			if totalTicks > j.O.Quick {
+				running = false
+			}
 		case <-tickerC:
 			if count >= 10.0 {
 				cpuHz *= 0.9
@@ -188,9 +193,6 @@ func (j Jibi) Run() {
 				case s := <-sc:
 					fmt.Println(s)
 				}
-			}
-			if j.O.Quick {
-				running = false
 			}
 		}
 	}
