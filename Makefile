@@ -1,4 +1,4 @@
-.PHONY: all build test
+.PHONY: all build test pprof
 
 all: test build
 
@@ -8,3 +8,6 @@ build:
 
 test:
 	build/env.sh go test jibi/*
+
+pprof:
+	build/env.sh go test -cpuprofile cpu.prof -memprofile mem.prof -bench . jibi/*

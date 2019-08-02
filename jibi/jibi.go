@@ -98,7 +98,7 @@ func (j Jibi) Run() {
 	}
 	var timeout <-chan time.Time
 	if j.O.Quick {
-		timeout = time.After(2 * time.Second)
+		timeout = time.After(20 * time.Second)
 	}
 	cpuHz := float64(0)
 	cpuCps := ClockType(0)
@@ -112,7 +112,6 @@ func (j Jibi) Run() {
 	for running := true; running; {
 		select {
 		case <-timeout:
-			fmt.Println("timeout")
 			running = false
 		case u := <-inst:
 			fmt.Println(u)
