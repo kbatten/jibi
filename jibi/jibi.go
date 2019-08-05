@@ -82,6 +82,9 @@ func (j Jibi) Run() {
 	j.kp.RunCommand(CmdLoopCounter, resp)
 	kpLoops := <-resp
 
+	j.kp.Init()
+	defer j.kp.Close()
+
 	j.Play()
 	ticker := time.NewTicker(1 * time.Second)
 	tickerC := ticker.C
@@ -110,7 +113,7 @@ func (j Jibi) Run() {
 	kpCps := ClockType(0)
 	kpLps := ClockType(0)
 	count := float64(-1)
-	totalTicks :=  uint64(0)
+	totalTicks := uint64(0)
 	for running := true; running; {
 		select {
 		case u := <-inst:
