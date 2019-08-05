@@ -9,10 +9,9 @@ import (
 type Options struct {
 	Status   bool
 	Skipbios bool
-	Render   bool
+	Renderer string
 	Keypad   bool
 	Quick    uint64
-	Squash   bool
 	Every    bool
 }
 
@@ -33,15 +32,12 @@ func New(rom []Byte, options Options) Jibi {
 	cart := NewCartridge(rom)
 	mmu := NewMmu(cart)
 	cpu := NewCpu(mmu, bios)
-	lcd := NewLcd(options.Squash)
+	lcd := NewLcd(options.Renderer)
 	gpu := NewGpu(mmu, lcd, cpu.Clock())
 	kp := NewKeypad(mmu, options.Keypad)
 
 	if options.Skipbios {
 		cpu.RunCommand(CmdUnloadBios, nil)
-	}
-	if !options.Render {
-		lcd.DisableRender()
 	}
 
 	return Jibi{options, mmu, cpu, lcd, gpu, cart, kp}
@@ -82,6 +78,9 @@ func (j Jibi) Run() {
 	j.kp.RunCommand(CmdLoopCounter, resp)
 	kpLoops := <-resp
 
+	j.lcd.Init()
+	defer j.lcd.Close()
+
 	j.Play()
 	ticker := time.NewTicker(1 * time.Second)
 	tickerC := ticker.C
@@ -110,7 +109,7 @@ func (j Jibi) Run() {
 	kpCps := ClockType(0)
 	kpLps := ClockType(0)
 	count := float64(-1)
-	totalTicks :=  uint64(0)
+	totalTicks := uint64(0)
 	for running := true; running; {
 		select {
 		case u := <-inst:
@@ -162,17 +161,15 @@ func (j Jibi) Run() {
 				sc := make(chan string)
 				go func() {
 					s := ""
-					if j.O.Render {
-						s = fmt.Sprintf("\x1B[s\x1B[58;0H" +
-							"\x1B[K\n" + // cpu instruction
-							"\x1B[K\n" + // cpu
-							"\x1B[K\n" + // cpu
-							"\x1B[K\n" + // cpu flags
-							"\x1B[K\n" + // keypad
-							"\x1B[K\n" + // metrics 1
-							"\x1B[K\n" + // metrics 2
-							"\x1B[58;0H")
-					}
+					s = fmt.Sprintf("\x1B[s\x1B[58;0H" +
+						"\x1B[K\n" + // cpu instruction
+						"\x1B[K\n" + // cpu
+						"\x1B[K\n" + // cpu
+						"\x1B[K\n" + // cpu flags
+						"\x1B[K\n" + // keypad
+						"\x1B[K\n" + // metrics 1
+						"\x1B[K\n" + // metrics 2
+						"\x1B[58;0H")
 					s += fmt.Sprintf("%s\n%s\n"+
 						"   cpu: %5.2fMhz cpuCps: %8d cpuLps: %8d "+
 						"gpuFps: %8.2f gpuCps: %8d gpuLps: %8d\n"+
@@ -182,9 +179,7 @@ func (j Jibi) Run() {
 						cpuHz/(1e6*count), cpuCps, cpuLps,
 						gpuFps/count, gpuCps, gpuLps,
 						kpCps, kpLps)
-					if j.O.Render {
-						s += fmt.Sprintf("\x1B[u")
-					}
+					s += fmt.Sprintf("\x1B[u")
 					sc <- s
 				}()
 				select {

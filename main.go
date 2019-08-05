@@ -12,13 +12,12 @@ import (
 func main() {
 	doc := `usage: jibi [options] <rom>
 dev options:
-  --dev-status         show 1 second status
-  --dev-norender       disable rendering
-  --dev-nokeypad       disable keypad input
-  --dev-quick=<ticks>  run a quick test cycle
-  --dev-nosquash       only display upper left
-  --dev-every          print every exectuted instruction
-  --dev-cpuprofile     write cpu.prof for use with pprof`
+  --dev-status               show 1 second status
+  --dev-renderer=<renderer>  choose renderer from none, ascii, termbox [default: ascii]
+  --dev-nokeypad             disable keypad input
+  --dev-quick=<ticks>        run a quick test cycle
+  --dev-every                print every exectuted instruction
+  --dev-cpuprofile           write cpu.prof for use with pprof`
 	args, _ := docopt.Parse(doc, nil, true, "", false)
 
 	rom, err := jibi.ReadRomFile(args["<rom>"].(string))
@@ -37,12 +36,11 @@ dev options:
 	}
 
 	options := jibi.Options{
-		Status: args["--dev-status"].(bool),
-		Render: !args["--dev-norender"].(bool),
-		Keypad: !args["--dev-nokeypad"].(bool),
-		Quick:  quick,
-		Squash: !args["--dev-nosquash"].(bool),
-		Every:  args["--dev-every"].(bool),
+		Status:   args["--dev-status"].(bool),
+		Renderer: args["--dev-renderer"].(string),
+		Keypad:   !args["--dev-nokeypad"].(bool),
+		Quick:    quick,
+		Every:    args["--dev-every"].(bool),
 	}
 
 	if args["--dev-cpuprofile"].(bool) {

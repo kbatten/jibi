@@ -4,67 +4,48 @@ import (
 	"fmt"
 )
 
-const (
-	lcdWidth  Byte = 160
-	lcdHeight Byte = 144
-)
-
-type Lcd interface {
-	DrawLine(bl []Byte)
-	Blank()
-	DisableRender()
-}
-
 // An LcdASCII outputs as ascii characters to the terminal.
 type LcdASCII struct {
-	dr           bool
-	prevLine     []Byte
-	lineIndex    uint8
-	prevDrawLine uint8
-	squash       bool
+	prevLine            []Byte
+	lineIndex           uint8 // lcd output line index
+	prevScreenLineIndex int   // previous screen output line index
 }
 
-func NewLcd(squash bool) Lcd {
-	return &LcdASCII{squash: squash}
+func NewLcdASCII() Lcd {
+	return &LcdASCII{}
+}
+
+func (lcd *LcdASCII) Init() {
+}
+
+func (lcd *LcdASCII) Close() {
 }
 
 // DrawLine draws the Byte Slice to the current line index, then advances the
 // index.
-func (lcd *LcdASCII) DrawLine(bl []Byte) {
-	blO := make([]Byte, len(bl))
-	copy(blO, bl)
-	drawLine := uint8(float64(lcd.lineIndex) * 50.0 / float64(lcdHeight))
-	if lcd.squash {
-		if drawLine == lcd.prevDrawLine && lcd.lineIndex != 0 {
-			// compress previous line and this line into one
-			for i := range bl {
-				bl[i] = bl[i] | (lcd.prevLine[i]&0xC0 | (lcd.prevLine[i]&0x03)<<2)
-			}
+func (lcd *LcdASCII) DrawLine(line []Byte) {
+	outputLine := make([]Byte, len(line))
+	copy(outputLine, line)
+
+	// calculate the output Y
+	screenLineIndex := int(float64(lcd.lineIndex) * 50.0 / float64(lcdHeight))
+	if screenLineIndex == lcd.prevScreenLineIndex && lcd.lineIndex != 0 {
+		// compress previous line and this line into one
+		for i := range line {
+			outputLine[i] = outputLine[i] | (lcd.prevLine[i]&0xC0 | (lcd.prevLine[i]&0x03)<<2)
 		}
 	}
 
 	ls := make([]byte, lcdWidth)
 	var o byte
-	for i, c := range bl {
+	for i, c := range outputLine {
 		o = ' '
 		if c == 1 {
-			if lcd.squash {
-				o = ' ' // 0001
-			} else {
-				o = '.'
-			}
+			o = ' ' // 0001
 		} else if c == 2 {
-			if lcd.squash {
-				o = '.' // 0010
-			} else {
-				o = '_'
-			}
+			o = '.' // 0010
 		} else if c == 3 {
-			if lcd.squash {
-				o = '.' // 0011
-			} else {
-				o = '.'
-			}
+			o = '.' // 0011
 		} else if c == 4 {
 			o = ' ' // 0100
 		} else if c == 5 {
@@ -92,30 +73,15 @@ func (lcd *LcdASCII) DrawLine(bl []Byte) {
 		}
 		ls[i] = o
 	}
-	if lcd.dr == false {
-		if lcd.squash {
-			fmt.Printf("\x1B[%d;H%s", drawLine, ls)
-		} else {
-			if lcd.lineIndex < 50 {
-				fmt.Println(ls)
-			}
-		}
-	}
+	fmt.Printf("\x1B[%d;H%s", screenLineIndex, ls)
 
-	lcd.prevDrawLine = drawLine
-	lcd.prevLine = blO
+	lcd.prevScreenLineIndex = screenLineIndex
+	lcd.prevLine = line
 	lcd.lineIndex++
 }
 
 // Blank moves the cursor to the upper left.
 func (lcd *LcdASCII) Blank() {
-	if lcd.dr == false {
-		fmt.Print("\x1B[0;0H")
-	}
+	fmt.Print("\x1B[0;0H")
 	lcd.lineIndex = 0
-}
-
-// DisableRender turns off rendering of lines. Only use while Paused.
-func (lcd *LcdASCII) DisableRender() {
-	lcd.dr = true
 }
