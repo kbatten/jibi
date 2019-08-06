@@ -28,24 +28,19 @@ func (i instruction) String() string {
 // n reset
 // h and c set or reset according to operation
 func (c *Cpu) addWordR(a Word, b Byte) Word {
-	fmt.Println(c.str())
-	panic("untested")
-	h := a.High()
-	l := a.Low()
-	bi := int8(b)
-	if bi < 0 {
-		b = Byte(uint8(-bi))
-		l = c.sub(l, b)
-		h = c.sbc(h, Byte(0))
-		c.f.resetFlag(flagZ)
-		c.f.resetFlag(flagN)
-		return BytesToWord(h, l)
+	sum := a + Word(b)
+	// check half carry
+	if (a&0xFF)+Word(b) > 0xFF {
+		c.f.setFlag(flagH)
 	}
-	l = c.add(l, b)
-	h = c.adc(h, Byte(0))
+	// check carry
+	if sum < a {
+		c.f.setFlag(flagC)
+	}
+	// reset other flags
 	c.f.resetFlag(flagZ)
 	c.f.resetFlag(flagN)
-	return BytesToWord(h, l)
+	return sum
 }
 
 func (c *Cpu) bit(b uint8, n Byte) {

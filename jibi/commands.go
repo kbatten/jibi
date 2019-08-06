@@ -563,11 +563,7 @@ var commandTable = map[opcode]command{
 	0xF6: command{"", 0, 0, func(c *Cpu) {}},
 	0xF7: command{"", 0, 0, func(c *Cpu) {}},
 	0xF8: command{"LDHL SP, n", 1, 12, func(c *Cpu) {
-		fmt.Println(c.str())
-		panic("untested")
 		c.h.setWord(c.addWordR(c.sp, c.inst.p[0]))
-		c.f.resetFlag(flagZ)
-		c.f.resetFlag(flagN)
 	}},
 	0xF9: command{"", 0, 0, func(c *Cpu) {}},
 	0xFA: command{"LD A, (nn)", 2, 16, func(c *Cpu) {

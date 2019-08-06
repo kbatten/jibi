@@ -545,6 +545,77 @@ func TestInc(t *testing.T) {
 	}
 }
 
+func TestAddWordR(t *testing.T) {
+	cpu := NewCpu(newTestMmu(), []Byte{0xF8, 0x0F})
+	defer cpu.RunCommand(CmdStop, nil)
+
+	// LDHL SP, n -- H, C
+	cpu.pc = 0
+	cpu.sp = register16(0xFFFE)
+	cpu.f.reset()
+	cpu.fetch()
+	cpu.execute()
+	if cpu.h.Word() != Word(0x000D) {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagZ) != false {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagN) != false {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagH) != true {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagC) != true {
+		t.Error()
+	}
+
+	// LDHL SP, n -- NH, NC
+	cpu.pc = 0
+	cpu.sp = register16(0xFFF0)
+	cpu.f.reset()
+	cpu.fetch()
+	cpu.execute()
+	if cpu.h.Word() != Word(0xFFFF) {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagZ) != false {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagN) != false {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagH) != false {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagC) != false {
+		t.Error()
+	}
+
+	// LDHL SP, n -- H, NC
+	cpu.pc = 0
+	cpu.sp = register16(0xFEFE)
+	cpu.f.reset()
+	cpu.fetch()
+	cpu.execute()
+	if cpu.h.Word() != Word(0xFF0D) {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagZ) != false {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagN) != false {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagH) != true {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagC) != false {
+		t.Error()
+	}
+}
+
 func TestAdd(t *testing.T) {
 	cpu := NewCpu(newTestMmu(), []Byte{0x86})
 	defer cpu.RunCommand(CmdStop, nil)
