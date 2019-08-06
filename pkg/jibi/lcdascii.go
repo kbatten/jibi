@@ -10,6 +10,8 @@ const (
 )
 
 type Lcd interface {
+	Init()
+	Close()
 	DrawLine(bl []Byte)
 	Blank()
 	DisableRender()
@@ -26,6 +28,14 @@ type LcdASCII struct {
 
 func NewLcd(squash bool) Lcd {
 	return &LcdASCII{squash: squash}
+}
+
+func (lcd *LcdASCII) Init() {
+	fmt.Printf("\x1B[?25l") // hide the cursor
+}
+
+func (lcd *LcdASCII) Close() {
+	fmt.Printf("\x1B[?25h") // show the cursor
 }
 
 // DrawLine draws the Byte Slice to the current line index, then advances the
@@ -94,6 +104,7 @@ func (lcd *LcdASCII) DrawLine(bl []Byte) {
 	}
 	if lcd.dr == false {
 		if lcd.squash {
+			//fmt.Printf("\x1B[%d;H%s\x1B[0;0H", drawLine, ls)
 			fmt.Printf("\x1B[%d;H%s", drawLine, ls)
 		} else {
 			if lcd.lineIndex < 50 {
@@ -109,9 +120,11 @@ func (lcd *LcdASCII) DrawLine(bl []Byte) {
 
 // Blank moves the cursor to the upper left.
 func (lcd *LcdASCII) Blank() {
-	if lcd.dr == false {
-		fmt.Print("\x1B[0;0H")
-	}
+	/*
+		if lcd.dr == false {
+			fmt.Print("\x1B[2J")
+		}
+	*/
 	lcd.lineIndex = 0
 }
 

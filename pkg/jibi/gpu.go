@@ -42,13 +42,16 @@ func NewGpu(mmu Mmu, lcd Lcd, clk chan ClockType) *Gpu {
 }
 
 func (g *Gpu) cmdFrameCounter(resp interface{}) {
-	if resp, ok := resp.(chan chan ClockType); !ok {
-		panic("invalid command response type")
-	} else {
-		clk := make(chan ClockType, 1)
-		g.frameCounters = append(g.frameCounters, NewClock(clk))
-		resp <- clk
-	}
+	panic("cmdFrameCounter")
+	/*
+		if resp, ok := resp.(chan chan ClockType); !ok {
+			panic("invalid command response type")
+		} else {
+			clk := make(chan ClockType, 1)
+			g.frameCounters = append(g.frameCounters, NewClock(clk))
+			resp <- clk
+		}
+	*/
 }
 
 func (g *Gpu) readByte(addr Word) Byte {

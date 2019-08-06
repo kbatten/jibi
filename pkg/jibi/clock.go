@@ -1,35 +1,40 @@
 package jibi
 
+// A clock replicates ticks from a source (cpu) to other things that need it
+
 // A ClockType is simply the type used for all clocks
-type ClockType uint32
+type ClockType uint8
 
-// A Clock sends number of clock cycle since last successful send
-// so if a non-blocking send fails, the cycles accumulate
-// on successful send the cycles is reset
-// sends happen on machine cycle end
 type Clock struct {
-	v ClockType
-	c chan ClockType
+	dests    []chan ClockType
+	attacher chan chan ClockType
 }
 
-// NewClock creates a new clock that will send on the provided channel.
-func NewClock(c chan ClockType) *Clock {
-	return &Clock{ClockType(0), c}
+// NewClock creates a new clock that will read from source.
+func NewClock() *Clock {
+	// can attach 10 destinations before AddCycles, bad
+	return &Clock{attacher: make(chan chan ClockType, 10)}
 }
 
-// AddCycles tries to send the number of accumulated cycles on the channel,
-// if that is successful it resets the accumulation.
-func (c *Clock) AddCycles(cycles uint8) {
-	c.v += ClockType(cycles)
-	//v := uint8(c.v)
-	//if c.v > 255 {
-	//  v = 255
-	//}
+func (c *Clock) Attach() chan ClockType {
+	dest := make(chan ClockType)
+	c.attacher <- dest
+	return dest
+}
 
-	select {
-	case c.c <- c.v:
-		//c.v -= ClockType(v)
-		c.v = 0
-	default:
+// Send cycle count to all destinations
+func (c *Clock) AddCycles(cycles ClockType) {
+	// attach all pending
+	for attaching := true; attaching; {
+		select {
+		case d := <-c.attacher:
+			c.dests = append(c.dests, d)
+		default:
+			attaching = false
+		}
+	}
+	// broadcast to all destinations
+	for _, d := range c.dests {
+		d <- cycles
 	}
 }
