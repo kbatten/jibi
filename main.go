@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"runtime/pprof"
-	"strconv"
 
 	"github.com/docopt/docopt-go"
 
@@ -12,42 +11,28 @@ import (
 )
 
 func main() {
-	doc := `usage: jibi [options] <rom>
-dev options:
-  --dev-status         show 1 second status
-  --dev-norender       disable rendering
-  --dev-nokeypad       disable keypad input
-  --dev-quick=<ticks>  run a quick test cycle
-  --dev-nosquash       only display upper left
-  --dev-every          print every exectuted instruction
-  --dev-cpuprofile     write cpu.prof for use with pprof`
-	args, _ := docopt.Parse(doc, nil, true, "", false)
+	var config struct {
+		DevStatus     bool   `docopt:"--dev-status"`
+		DevMaxTicks   int    `docopt:"--dev-maxticks"`
+		DevCpuProfile bool   `docopt:"--dev-cpuprofile"`
+		Rom           string `docopt:"<rom>"`
+	}
 
-	rom, err := jibi.ReadRomFile(args["<rom>"].(string))
+	usage := `usage: jibi [options] <rom>
+dev options:
+  --dev-status          show 1 second status
+  --dev-maxticks=TICKS  stop after a number of cpu ticks
+  --dev-cpuprofile      write cpu.prof for use with pprof`
+
+	opts, err := docopt.ParseDoc(usage)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
+	opts.Bind(&config)
 
-	var quick uint64
-	if args["--dev-quick"] != nil {
-		quick, err = strconv.ParseUint(args["--dev-quick"].(string), 10, 64)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-	}
-
-	options := jibi.Options{
-		Status: args["--dev-status"].(bool),
-		Render: !args["--dev-norender"].(bool),
-		Keypad: !args["--dev-nokeypad"].(bool),
-		Quick:  quick,
-		Squash: !args["--dev-nosquash"].(bool),
-		Every:  args["--dev-every"].(bool),
-	}
-
-	if args["--dev-cpuprofile"].(bool) {
+	// start pprof if required
+	if config.DevCpuProfile == true {
 		f, err := os.Create("cpu.prof")
 		if err != nil {
 			fmt.Println(err)
@@ -57,7 +42,20 @@ dev options:
 		defer pprof.StopCPUProfile()
 	}
 
-	gameboy := jibi.New(rom, options)
+	// load Rom
+	rom, err := jibi.ReadRomFile(config.Rom)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 
-	gameboy.Run()
+	// create jibi Options
+	options := jibi.Options{
+		Status:   config.DevStatus,
+		MaxTicks: config.DevTicks,
+	}
+
+	// create jibi and run
+	gb := jibi.New(rom, options)
+	gb.Run()
 }
