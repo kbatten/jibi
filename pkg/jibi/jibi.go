@@ -1,9 +1,12 @@
 package jibi
 
+import "os"
+
 // Options holds various options.
 type Options struct {
 	Status   bool
 	MaxTicks int
+	LogInst  bool
 	Skipbios bool
 	Render   bool
 	Keypad   bool
@@ -84,8 +87,6 @@ func (j Jibi) Run() {
 	j.lcd.Init()
 	defer j.lcd.Close()
 
-	j.Play()
-
 	/*
 		ticker := time.NewTicker(1 * time.Second)
 		tickerC := ticker.C
@@ -105,6 +106,18 @@ func (j Jibi) Run() {
 	if j.O.MaxTicks > 0 {
 		totalTicksClk = j.cpu.AttachClock()
 	}
+	totalTicks := int(0)
+
+	var instructions chan string
+	var logFile *os.File
+	if j.O.LogInst == true {
+		instructions = j.cpu.AttachInstructions()
+		var err error
+		logFile, err = os.Create("jibi.log")
+		if err != nil {
+			panic(err)
+		}
+	}
 	/*
 		cpuHz := float64(0)
 		cpuCps := ClockType(0)
@@ -116,13 +129,17 @@ func (j Jibi) Run() {
 		kpLps := ClockType(0)
 		count := float64(-1)
 	*/
-	totalTicks := int(0)
+	j.Play()
+
 	for running := true; running; {
 		select {
 		/*
 			case u := <-inst:
 				fmt.Println(u)
 		*/
+		case s := <-instructions:
+			logFile.WriteString(s)
+			logFile.WriteString("\n")
 		case t := <-totalTicksClk:
 			totalTicks += int(t)
 			if totalTicks > j.O.MaxTicks {
