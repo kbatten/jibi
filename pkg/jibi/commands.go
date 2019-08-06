@@ -29,8 +29,7 @@ func (o opcode) String() string {
 var commandTable = map[opcode]command{
 	0x00: command{"NOP", 0, 4, func(*Cpu) {}},
 	0x01: command{"LD BC, nn", 2, 12, func(c *Cpu) {
-		c.c.set(c.inst.p[0])
-		c.b.set(c.inst.p[1])
+		c.b.setWord(BytesToWord(c.inst.p[1], c.inst.p[0]))
 	}},
 	0x02: command{"LD (BC), A", 0, 8, func(c *Cpu) {
 		c.writeByte(c.b.Word(), c.a.Byte())
