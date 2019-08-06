@@ -114,6 +114,15 @@ func (c *Cpu) AttachClock() chan ClockType {
 	return c.clock.Attach()
 }
 
+// return a channel that will get every instruction
+func (c *Cpu) AttachInstructions() chan string {
+	// TODO: use a construct like AttachClock
+	inst := make(chan string)
+	c.notifyInst = append(c.notifyInst, inst)
+	return inst
+
+}
+
 func (c *Cpu) cmdClock(resp interface{}) {
 	panic("cmdClock") // possibly return c.clock.Attach()
 	/*
