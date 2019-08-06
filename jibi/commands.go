@@ -52,8 +52,6 @@ var commandTable = map[opcode]command{
 	0x08: command{"LD (nn), SP", 2, 20, func(c *Cpu) {
 		c.writeWord(BytesToWord(c.inst.p[1], c.inst.p[0]), c.sp)
 	}},
-	0x09: command{"", 0, 0, func(c *Cpu) {}},
-	0x0A: command{"", 0, 0, func(c *Cpu) {}},
 	0x0B: command{"DEC BC", 0, 8, func(c *Cpu) {
 		c.b.setWord(c.b.Word() - 1)
 	}},
@@ -66,8 +64,6 @@ var commandTable = map[opcode]command{
 	0x0E: command{"LD C, #", 1, 8, func(c *Cpu) {
 		c.c.set(c.inst.p[0])
 	}},
-	0x0F: command{"", 0, 0, func(c *Cpu) {}},
-	0x10: command{"", 0, 0, func(c *Cpu) {}},
 	0x11: command{"LD DE, nn", 2, 12, func(c *Cpu) {
 		c.d.setWord(BytesToWord(c.inst.p[1], c.inst.p[0]))
 	}},
@@ -92,11 +88,9 @@ var commandTable = map[opcode]command{
 	0x18: command{"JR n", 1, 8, func(c *Cpu) {
 		c.jr(int8(c.inst.p[0]))
 	}},
-	0x19: command{"", 0, 0, func(c *Cpu) {}},
 	0x1A: command{"LD A, (DE)", 0, 8, func(c *Cpu) {
 		c.a.set(c.readByte(c.d.Word()))
 	}},
-	0x1B: command{"", 0, 0, func(c *Cpu) {}},
 	0x1C: command{"INC E", 0, 4, func(c *Cpu) {
 		c.e.set(c.inc(c.e.Byte()))
 	}},
@@ -147,12 +141,10 @@ var commandTable = map[opcode]command{
 	0x28: command{"JR Z, *", 1, 8, func(c *Cpu) {
 		c.jrF(flagZ, int8(c.inst.p[0]))
 	}},
-	0x29: command{"", 0, 0, func(c *Cpu) {}},
 	0x2A: command{"LDI A, (HL)", 0, 8, func(c *Cpu) {
 		c.a.set(c.readByte(c.h.Word()))
 		c.h.setWord(c.h.Word() + 1)
 	}},
-	0x2B: command{"", 0, 0, func(c *Cpu) {}},
 	0x2C: command{"INC L", 0, 4, func(c *Cpu) {
 		c.l.set(c.inc(c.l.Byte()))
 	}},
@@ -162,8 +154,6 @@ var commandTable = map[opcode]command{
 	0x2E: command{"LD L, #", 1, 8, func(c *Cpu) {
 		c.l.set(c.inst.p[0])
 	}},
-	0x2F: command{"", 0, 0, func(c *Cpu) {}},
-	0x30: command{"", 0, 0, func(c *Cpu) {}},
 	0x31: command{"LD SP, nn", 2, 12, func(c *Cpu) {
 		c.sp = register16(BytesToWord(c.inst.p[1], c.inst.p[0]))
 	}},
@@ -171,7 +161,6 @@ var commandTable = map[opcode]command{
 		c.writeByte(c.h.Word(), c.a.Byte())
 		c.h.setWord(c.h.Word() - 1)
 	}},
-	0x33: command{"", 0, 0, func(c *Cpu) {}},
 	0x34: command{"INC (HL)", 0, 12, func(c *Cpu) {
 		v := c.readByte(c.h.Word())
 		v = c.inc(v)
@@ -185,22 +174,16 @@ var commandTable = map[opcode]command{
 	0x36: command{"LD (HL), n", 1, 12, func(c *Cpu) {
 		c.writeByte(c.h.Word(), c.inst.p[0])
 	}},
-	0x37: command{"", 0, 0, func(c *Cpu) {}},
-	0x38: command{"", 0, 0, func(c *Cpu) {}},
-	0x39: command{"", 0, 0, func(c *Cpu) {}},
 	0x3A: command{"LDD A, (HL)", 0, 8, func(c *Cpu) {
 		c.a.set(c.readByte(c.h.Word()))
 		c.h.setWord(c.h.Word() - 1)
 	}},
-	0x3B: command{"", 0, 0, func(c *Cpu) {}},
-	0x3C: command{"", 0, 0, func(c *Cpu) {}},
 	0x3D: command{"DEC A", 0, 4, func(c *Cpu) {
 		c.a.set(c.dec(c.a.Byte()))
 	}},
 	0x3E: command{"LD A, #", 1, 8, func(c *Cpu) {
 		c.a.set(c.inst.p[0])
 	}},
-	0x3F: command{"", 0, 0, func(c *Cpu) {}},
 	0x40: command{"LD B, B", 0, 4, func(c *Cpu) {
 		c.b.set(c.b.Byte())
 	}},
@@ -225,65 +208,24 @@ var commandTable = map[opcode]command{
 	0x47: command{"LD B, A", 0, 4, func(c *Cpu) {
 		c.b.set(c.a.Byte())
 	}},
-	0x48: command{"", 0, 0, func(c *Cpu) {}},
-	0x49: command{"", 0, 0, func(c *Cpu) {}},
-	0x4A: command{"", 0, 0, func(c *Cpu) {}},
-	0x4B: command{"", 0, 0, func(c *Cpu) {}},
-	0x4C: command{"", 0, 0, func(c *Cpu) {}},
-	0x4D: command{"", 0, 0, func(c *Cpu) {}},
-	0x4E: command{"", 0, 0, func(c *Cpu) {}},
 	0x4F: command{"LD C, A", 0, 4, func(c *Cpu) {
 		c.c.set(c.a.Byte())
 	}},
-	0x50: command{"", 0, 0, func(c *Cpu) {}},
-	0x51: command{"", 0, 0, func(c *Cpu) {}},
-	0x52: command{"", 0, 0, func(c *Cpu) {}},
-	0x53: command{"", 0, 0, func(c *Cpu) {}},
-	0x54: command{"", 0, 0, func(c *Cpu) {}},
-	0x55: command{"", 0, 0, func(c *Cpu) {}},
-	0x56: command{"", 0, 0, func(c *Cpu) {}},
 	0x57: command{"LD D, A", 0, 4, func(c *Cpu) {
 		c.d.set(c.a.Byte())
 	}},
-	0x58: command{"", 0, 0, func(c *Cpu) {}},
-	0x59: command{"", 0, 0, func(c *Cpu) {}},
-	0x5A: command{"", 0, 0, func(c *Cpu) {}},
-	0x5B: command{"", 0, 0, func(c *Cpu) {}},
-	0x5C: command{"", 0, 0, func(c *Cpu) {}},
-	0x5D: command{"", 0, 0, func(c *Cpu) {}},
-	0x5E: command{"", 0, 0, func(c *Cpu) {}},
 	0x5F: command{"LD E, A", 0, 4, func(c *Cpu) {
 		c.e.set(c.a.Byte())
 	}},
-	0x60: command{"", 0, 0, func(c *Cpu) {}},
-	0x61: command{"", 0, 0, func(c *Cpu) {}},
-	0x62: command{"", 0, 0, func(c *Cpu) {}},
-	0x63: command{"", 0, 0, func(c *Cpu) {}},
-	0x64: command{"", 0, 0, func(c *Cpu) {}},
-	0x65: command{"", 0, 0, func(c *Cpu) {}},
-	0x66: command{"", 0, 0, func(c *Cpu) {}},
 	0x67: command{"LD H, A", 0, 4, func(c *Cpu) {
 		c.h.set(c.a.Byte())
 	}},
-	0x68: command{"", 0, 0, func(c *Cpu) {}},
-	0x69: command{"", 0, 0, func(c *Cpu) {}},
-	0x6A: command{"", 0, 0, func(c *Cpu) {}},
-	0x6B: command{"", 0, 0, func(c *Cpu) {}},
-	0x6C: command{"", 0, 0, func(c *Cpu) {}},
-	0x6D: command{"", 0, 0, func(c *Cpu) {}},
-	0x6E: command{"", 0, 0, func(c *Cpu) {}},
 	0x6F: command{"LD L, A", 0, 4, func(c *Cpu) {
 		c.l.set(c.a.Byte())
 	}},
-	0x70: command{"", 0, 0, func(c *Cpu) {}},
-	0x71: command{"", 0, 0, func(c *Cpu) {}},
-	0x72: command{"", 0, 0, func(c *Cpu) {}},
 	0x73: command{"LD (HL), E", 0, 8, func(c *Cpu) {
 		c.writeByte(c.h.Word(), c.e.Byte())
 	}},
-	0x74: command{"", 0, 0, func(c *Cpu) {}},
-	0x75: command{"", 0, 0, func(c *Cpu) {}},
-	0x76: command{"", 0, 0, func(c *Cpu) {}},
 	0x77: command{"LD (HL), A", 0, 8, func(c *Cpu) {
 		c.writeByte(c.h.Word(), c.a.Byte())
 	}},
@@ -384,24 +326,9 @@ var commandTable = map[opcode]command{
 	0x97: command{"SUB A", 0, 4, func(c *Cpu) {
 		c.a.set(c.sub(c.a.Byte(), c.a.Byte()))
 	}},
-	0x98: command{"", 0, 0, func(c *Cpu) {}},
-	0x99: command{"", 0, 0, func(c *Cpu) {}},
-	0x9A: command{"", 0, 0, func(c *Cpu) {}},
-	0x9B: command{"", 0, 0, func(c *Cpu) {}},
-	0x9C: command{"", 0, 0, func(c *Cpu) {}},
-	0x9D: command{"", 0, 0, func(c *Cpu) {}},
-	0x9E: command{"", 0, 0, func(c *Cpu) {}},
-	0x9F: command{"", 0, 0, func(c *Cpu) {}},
-	0xA0: command{"", 0, 0, func(c *Cpu) {}},
-	0xA1: command{"", 0, 0, func(c *Cpu) {}},
-	0xA2: command{"", 0, 0, func(c *Cpu) {}},
-	0xA3: command{"", 0, 0, func(c *Cpu) {}},
 	0xA4: command{"AND H", 0, 4, func(c *Cpu) {
 		c.a.set(c.and(c.a.Byte(), c.h.Byte()))
 	}},
-	0xA5: command{"", 0, 0, func(c *Cpu) {}},
-	0xA6: command{"", 0, 0, func(c *Cpu) {}},
-	0xA7: command{"", 0, 0, func(c *Cpu) {}},
 	0xA8: command{"XOR B", 0, 4, func(c *Cpu) {
 		c.a.set(c.xor(c.a.Byte(), c.b.Byte()))
 	}},
@@ -447,8 +374,6 @@ var commandTable = map[opcode]command{
 	0xB6: command{"OR (HL)", 0, 8, func(c *Cpu) {
 		c.a.set(c.or(c.a.Byte(), c.readByte(c.h.Word())))
 	}},
-	0xB7: command{"", 0, 0, func(c *Cpu) {}},
-
 	0xB8: command{"CP B", 0, 4, func(c *Cpu) {
 		c.sub(c.a.Byte(), c.b.Byte())
 	}},
@@ -474,25 +399,18 @@ var commandTable = map[opcode]command{
 	0xBF: command{"CP A", 0, 4, func(c *Cpu) {
 		c.sub(c.a.Byte(), c.a.Byte())
 	}},
-	0xC0: command{"", 0, 0, func(c *Cpu) {}},
 	0xC1: command{"POP BC", 0, 12, func(c *Cpu) {
 		c.b.setWord(c.pop())
 	}},
-	0xC2: command{"", 0, 0, func(c *Cpu) {}},
 	0xC3: command{"JP nn", 2, 12, func(c *Cpu) {
 		c.jp(BytesToWord(c.inst.p[1], c.inst.p[0]))
 	}},
-	0xC4: command{"", 0, 0, func(c *Cpu) {}},
 	0xC5: command{"PUSH BC", 0, 16, func(c *Cpu) {
 		c.push(c.b.Word())
 	}},
-	0xC6: command{"", 0, 0, func(c *Cpu) {}},
-	0xC7: command{"", 0, 0, func(c *Cpu) {}},
-	0xC8: command{"", 0, 0, func(c *Cpu) {}},
 	0xC9: command{"RET", 0, 8, func(c *Cpu) {
 		c.jp(c.pop())
 	}},
-	0xCA: command{"", 0, 0, func(c *Cpu) {}},
 	0xCB01: command{"RLC C", 0, 8, func(c *Cpu) {
 		c.c.set(c.rlc(c.c.Byte()))
 	}},
@@ -508,72 +426,32 @@ var commandTable = map[opcode]command{
 	0xCD: command{"CALL nn", 2, 12, func(c *Cpu) {
 		c.call(BytesToWord(c.inst.p[1], c.inst.p[0]))
 	}},
-	0xCE: command{"", 0, 0, func(c *Cpu) {}},
-	0xCF: command{"", 0, 0, func(c *Cpu) {}},
-	0xD0: command{"", 0, 0, func(c *Cpu) {}},
-	0xD1: command{"", 0, 0, func(c *Cpu) {}},
-	0xD2: command{"", 0, 0, func(c *Cpu) {}},
-	0xD3: command{"", 0, 0, func(c *Cpu) {}},
-	0xD4: command{"", 0, 0, func(c *Cpu) {}},
-	0xD5: command{"", 0, 0, func(c *Cpu) {}},
-	0xD6: command{"", 0, 0, func(c *Cpu) {}},
-	0xD7: command{"", 0, 0, func(c *Cpu) {}},
-	0xD8: command{"", 0, 0, func(c *Cpu) {}},
-	0xD9: command{"", 0, 0, func(c *Cpu) {}},
-	0xDA: command{"", 0, 0, func(c *Cpu) {}},
-	0xDB: command{"", 0, 0, func(c *Cpu) {}},
-	0xDC: command{"", 0, 0, func(c *Cpu) {}},
-	0xDE: command{"", 0, 0, func(c *Cpu) {}},
-	0xDF: command{"", 0, 0, func(c *Cpu) {}},
 	0xE0: command{"LDH (n), A", 1, 12, func(c *Cpu) {
 		c.writeByte(Word(0xFF00+uint16(c.inst.p[0])), c.a.Byte())
 	}},
-	0xE1: command{"", 0, 0, func(*Cpu) {}},
 	0xE2: command{"LD (C), A", 0, 8, func(c *Cpu) {
 		c.writeByte(Word(0xFF00+uint16(c.c.Byte())), c.a.Byte())
 	}},
-	0xE3: command{"", 0, 0, func(c *Cpu) {}},
-	0xE4: command{"", 0, 0, func(c *Cpu) {}},
-	0xE5: command{"", 0, 0, func(c *Cpu) {}},
-	0xE6: command{"", 0, 0, func(c *Cpu) {}},
-	0xE7: command{"", 0, 0, func(c *Cpu) {}},
-	0xE8: command{"", 0, 0, func(c *Cpu) {}},
-	0xE9: command{"", 0, 0, func(c *Cpu) {}},
 	0xEA: command{"LD (nn), A", 2, 16, func(c *Cpu) {
 		c.writeByte(BytesToWord(c.inst.p[1], c.inst.p[0]), c.a.Byte())
 	}},
-	0xEB: command{"", 0, 0, func(c *Cpu) {}},
-	0xEC: command{"", 0, 0, func(c *Cpu) {}},
-	0xED: command{"", 0, 0, func(c *Cpu) {}},
-	0xEE: command{"", 0, 0, func(c *Cpu) {}},
-	0xEF: command{"", 0, 0, func(c *Cpu) {}},
 	0xF0: command{"LDH A, (n)", 1, 12, func(c *Cpu) {
 		c.a.set(c.readByte(Word(0xFF00 + uint16(c.inst.p[0]))))
 	}},
-	0xF1: command{"", 0, 0, func(c *Cpu) {}},
 	0xF2: command{"LD A, (C)", 0, 8, func(c *Cpu) {
 		c.a.set(c.readByte(Word(0xFF00 + uint16(c.c.Byte()))))
 	}},
 	0xF3: command{"DI", 0, 4, func(c *Cpu) {
 		c.ime = Bit(0)
 	}},
-	0xF4: command{"", 0, 0, func(c *Cpu) {}},
-	0xF5: command{"", 0, 0, func(c *Cpu) {}},
-	0xF6: command{"", 0, 0, func(c *Cpu) {}},
-	0xF7: command{"", 0, 0, func(c *Cpu) {}},
 	0xF8: command{"LDHL SP, n", 1, 12, func(c *Cpu) {
 		c.h.setWord(c.addWordR(c.sp, c.inst.p[0]))
 	}},
-	0xF9: command{"", 0, 0, func(c *Cpu) {}},
 	0xFA: command{"LD A, (nn)", 2, 16, func(c *Cpu) {
 		nn := BytesToWord(c.inst.p[1], c.inst.p[0])
 		c.a.set(c.readByte(nn))
 	}},
-	0xFB: command{"", 0, 0, func(c *Cpu) {}},
-	0xFC: command{"", 0, 0, func(c *Cpu) {}},
-	0xFD: command{"", 0, 0, func(c *Cpu) {}},
 	0xFE: command{"CP #", 1, 8, func(c *Cpu) {
 		c.sub(c.a.Byte(), c.inst.p[0])
 	}},
-	0xFF: command{"", 0, 0, func(*Cpu) {}},
 }
