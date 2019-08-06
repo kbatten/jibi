@@ -54,6 +54,10 @@ func (c *Cpu) bit(b uint8, n Byte) {
 	c.f.setFlag(flagH)
 }
 
+func (c *Cpu) res(b uint8, n Byte) Byte {
+	return ((1 << b) ^ 0xFF) & n
+}
+
 func (c *Cpu) xor(a, b Byte) Byte {
 	r := a ^ b
 	c.f.reset()
@@ -64,8 +68,6 @@ func (c *Cpu) xor(a, b Byte) Byte {
 }
 
 func (c *Cpu) and(a, b Byte) Byte {
-	fmt.Println(c.str())
-	panic("untested")
 	r := a & b
 	c.f.reset()
 	if r == 0 {
@@ -220,7 +222,7 @@ func (c *Cpu) rl(n Byte) Byte {
 	return Byte(r)
 }
 
-// rotate left, old bit 7 to carry
+// rotate left, old bit 7 to bit 0 and to carry
 func (c *Cpu) rlc(n Byte) Byte {
 	r := n>>7 | n<<1
 	c.f.reset()

@@ -235,21 +235,23 @@ func (c *Cpu) fetch() {
 		op = opcode(0xCB00 + uint16(c.readByte(c.pc)))
 		c.pc++
 	}
-	command := commandTable[op]
-	p := []Byte{}
-	for i := uint8(0); i < command.b; i++ {
-		p = append(p, c.readByte(c.pc))
-		c.pc++
+	if cmd, ok := commandTable[op]; ok {
+		p := []Byte{}
+		for i := uint8(0); i < cmd.b; i++ {
+			p = append(p, c.readByte(c.pc))
+			c.pc++
+		}
+		c.inst = newInstruction(op, p...)
+	} else {
+		panic(op)
 	}
-	c.inst = newInstruction(op, p...)
 }
 
 func (c *Cpu) execute() {
-	if cmd, ok := commandTable[c.inst.o]; ok {
-		cmd.f(c)
-		c.t += cmd.t
-		c.m += cmd.t * 4
-	}
+	cmd := commandTable[c.inst.o]
+	cmd.f(c)
+	c.t += cmd.t
+	c.m += cmd.t * 4
 }
 
 // setInterrupt sets the specific interrupt.
