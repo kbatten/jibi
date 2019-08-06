@@ -218,9 +218,11 @@ func (c *Commander) processCommand(cmdr CommandResponse) {
 		} else if cmdr.cmd == CmdPause {
 			c.playing = false
 		} else if cmdr.cmd == CmdCmdCounter {
-			c.cmdCmdCounter(cmdr.resp)
+			// c.cmdCmdCounter(cmdr.resp)
+			panic("CmdCmdCounter")
 		} else if cmdr.cmd == CmdLoopCounter {
-			c.cmdLoopCounter(cmdr.resp)
+			//c.cmdLoopCounter(cmdr.resp)
+			panic("CmdLoopCounter")
 		} else {
 			if _, ok := c.handlerFns[cmdr.cmd]; !ok {
 				if cmdr.cmd != CmdStop {
@@ -237,6 +239,7 @@ func (c *Commander) processCommand(cmdr CommandResponse) {
 	}
 }
 
+/*
 func (c *Commander) cmdCmdCounter(resp interface{}) {
 	if resp, ok := resp.(chan chan ClockType); !ok {
 		panic("invalid command response type")
@@ -256,6 +259,7 @@ func (c *Commander) cmdLoopCounter(resp interface{}) {
 		resp <- clk
 	}
 }
+*/
 
 func (c *Commander) play() {
 	c.playing = true

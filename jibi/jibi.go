@@ -1,17 +1,12 @@
 package jibi
 
-import (
-	"fmt"
-	"time"
-)
-
 // Options holds various options.
 type Options struct {
 	Status   bool
+	MaxTicks int
 	Skipbios bool
 	Render   bool
 	Keypad   bool
-	Quick    uint64
 	Squash   bool
 	Every    bool
 }
@@ -34,7 +29,7 @@ func New(rom []Byte, options Options) Jibi {
 	mmu := NewMmu(cart)
 	cpu := NewCpu(mmu, bios)
 	lcd := NewLcd(options.Squash)
-	gpu := NewGpu(mmu, lcd, cpu.Clock())
+	gpu := NewGpu(mmu, lcd, cpu.AttachClock())
 	kp := NewKeypad(mmu, options.Keypad)
 
 	if options.Skipbios {
@@ -65,141 +60,155 @@ func (j Jibi) RunCommand(cmd Command, resp chan string) {
 // Run starts the Jibi and waits till it ends before returning.
 func (j Jibi) Run() {
 	// metrics
-	cpuClk := j.cpu.Clock()
-	resp := make(chan chan ClockType)
-	j.cpu.RunCommand(CmdCmdCounter, resp)
-	cpuCmds := <-resp
-	j.cpu.RunCommand(CmdLoopCounter, resp)
-	cpuLoops := <-resp
-	j.gpu.RunCommand(CmdCmdCounter, resp)
-	gpuCmds := <-resp
-	j.gpu.RunCommand(CmdLoopCounter, resp)
-	gpuLoops := <-resp
-	j.gpu.RunCommand(CmdFrameCounter, resp)
-	gpuFrames := <-resp
-	j.kp.RunCommand(CmdCmdCounter, resp)
-	kpCmds := <-resp
-	j.kp.RunCommand(CmdLoopCounter, resp)
-	kpLoops := <-resp
-
+	/*
+		cpuClk := j.cpu.Clock()
+		resp := make(chan chan ClockType)
+		j.cpu.RunCommand(CmdCmdCounter, resp)
+		cpuCmds := <-resp
+		j.cpu.RunCommand(CmdLoopCounter, resp)
+		cpuLoops := <-resp
+		j.gpu.RunCommand(CmdCmdCounter, resp)
+		gpuCmds := <-resp
+		j.gpu.RunCommand(CmdLoopCounter, resp)
+		gpuLoops := <-resp
+		j.gpu.RunCommand(CmdFrameCounter, resp)
+		gpuFrames := <-resp
+		j.kp.RunCommand(CmdCmdCounter, resp)
+		kpCmds := <-resp
+		j.kp.RunCommand(CmdLoopCounter, resp)
+		kpLoops := <-resp
+	*/
 	j.kp.Init()
 	defer j.kp.Close()
 
+	j.lcd.Init()
+	defer j.lcd.Close()
+
 	j.Play()
-	ticker := time.NewTicker(1 * time.Second)
-	tickerC := ticker.C
 
-	var inst chan string
-	if j.O.Every {
-		respStr := make(chan chan string)
-		j.cpu.RunCommand(CmdOnInstruction, respStr)
-		inst = <-respStr
-		tickerC = nil
-	}
-	if !j.O.Status {
-		tickerC = nil
-	}
+	/*
+		ticker := time.NewTicker(1 * time.Second)
+		tickerC := ticker.C
+
+		var inst chan string
+		if j.O.Every {
+			respStr := make(chan chan string)
+			j.cpu.RunCommand(CmdOnInstruction, respStr)
+			inst = <-respStr
+			tickerC = nil
+		}
+		if !j.O.Status {
+			tickerC = nil
+		}
+	*/
 	var totalTicksClk chan ClockType
-	if j.O.Quick > 0 {
-		totalTicksClk = j.cpu.Clock()
+	if j.O.MaxTicks > 0 {
+		totalTicksClk = j.cpu.AttachClock()
 	}
-
-	cpuHz := float64(0)
-	cpuCps := ClockType(0)
-	cpuLps := ClockType(0)
-	gpuCps := ClockType(0)
-	gpuLps := ClockType(0)
-	gpuFps := float64(0)
-	kpCps := ClockType(0)
-	kpLps := ClockType(0)
-	count := float64(-1)
-	totalTicks := uint64(0)
+	/*
+		cpuHz := float64(0)
+		cpuCps := ClockType(0)
+		cpuLps := ClockType(0)
+		gpuCps := ClockType(0)
+		gpuLps := ClockType(0)
+		gpuFps := float64(0)
+		kpCps := ClockType(0)
+		kpLps := ClockType(0)
+		count := float64(-1)
+	*/
+	totalTicks := int(0)
 	for running := true; running; {
 		select {
-		case u := <-inst:
-			fmt.Println(u)
+		/*
+			case u := <-inst:
+				fmt.Println(u)
+		*/
 		case t := <-totalTicksClk:
-			totalTicks += uint64(t)
-			if totalTicks > j.O.Quick {
+			totalTicks += int(t)
+			if totalTicks > j.O.MaxTicks {
 				running = false
 			}
-		case <-tickerC:
-			if count >= 10.0 {
-				cpuHz *= 0.9
-				gpuFps *= 0.9
-				count = 9.0
-			}
-			cpuCps = 0
-			cpuLps = 0
-			gpuCps = 0
-			gpuLps = 0
-			kpCps = 0
-			kpLps = 0
-			for loop := true; loop; {
-				select {
-				case t := <-cpuClk:
-					cpuHz += float64(t)
-				case t := <-cpuCmds:
-					cpuCps += t
-				case t := <-cpuLoops:
-					cpuLps += t
-				case t := <-gpuCmds:
-					gpuCps += t
-				case t := <-gpuLoops:
-					gpuLps += t
-				case t := <-gpuFrames:
-					gpuFps += float64(t)
-				case t := <-kpCmds:
-					kpCps += t
-				case t := <-kpLoops:
-					kpLps += t
-				default:
-					loop = false
-				}
-			}
-			count++
+			/*
+				case <-tickerC:
+					if count >= 10.0 {
+						cpuHz *= 0.9
+						gpuFps *= 0.9
+						count = 9.0
+					}
+					cpuCps = 0
+					cpuLps = 0
+					gpuCps = 0
+					gpuLps = 0
+					kpCps = 0
+					kpLps = 0
+					for loop := true; loop; {
+						select {
+						case t := <-cpuClk:
+							cpuHz += float64(t)
+						case t := <-cpuCmds:
+							cpuCps += t
+						case t := <-cpuLoops:
+							cpuLps += t
+						case t := <-gpuCmds:
+							gpuCps += t
+						case t := <-gpuLoops:
+							gpuLps += t
+						case t := <-gpuFrames:
+							gpuFps += float64(t)
+						case t := <-kpCmds:
+							kpCps += t
+						case t := <-kpLoops:
+							kpLps += t
+						default:
+							loop = false
+						}
+					}
+					count++
 
-			// skip first tick
-			if count > 0 {
-				to := time.After(2 * time.Second)
-				sc := make(chan string)
-				go func() {
-					s := ""
-					if j.O.Render {
-						s = fmt.Sprintf("\x1B[s\x1B[58;0H" +
-							"\x1B[K\n" + // cpu instruction
-							"\x1B[K\n" + // cpu
-							"\x1B[K\n" + // cpu
-							"\x1B[K\n" + // cpu flags
-							"\x1B[K\n" + // keypad
-							"\x1B[K\n" + // metrics 1
-							"\x1B[K\n" + // metrics 2
-							"\x1B[58;0H")
+					// skip first tick
+					if count > 0 {
+						to := time.After(2 * time.Second)
+						sc := make(chan string)
+						go func() {
+							s := ""
+							if j.O.Render {
+								s = fmt.Sprintf("\x1B[s\x1B[58;0H" +
+									"\x1B[K\n" + // cpu instruction
+									"\x1B[K\n" + // cpu
+									"\x1B[K\n" + // cpu
+									"\x1B[K\n" + // cpu flags
+									"\x1B[K\n" + // keypad
+									"\x1B[K\n" + // metrics 1
+									"\x1B[K\n" + // metrics 2
+									"\x1B[58;0H")
+							}
+							s += fmt.Sprintf("%s\n%s\n"+
+								"   cpu: %5.2fMhz cpuCps: %8d cpuLps: %8d "+
+								"gpuFps: %8.2f gpuCps: %8d gpuLps: %8d\n"+
+								" kpCps: %8d  kpLps: %8d "+
+								"\n",
+								j.cpu, j.kp,
+								cpuHz/(1e6*count), cpuCps, cpuLps,
+								gpuFps/count, gpuCps, gpuLps,
+								kpCps, kpLps)
+							if j.O.Render {
+								s += fmt.Sprintf("\x1B[u")
+							}
+							sc <- s
+						}()
+						select {
+						case <-to:
+							panic("timeout")
+						case s := <-sc:
+							fmt.Println(s)
+						}
 					}
-					s += fmt.Sprintf("%s\n%s\n"+
-						"   cpu: %5.2fMhz cpuCps: %8d cpuLps: %8d "+
-						"gpuFps: %8.2f gpuCps: %8d gpuLps: %8d\n"+
-						" kpCps: %8d  kpLps: %8d "+
-						"\n",
-						j.cpu, j.kp,
-						cpuHz/(1e6*count), cpuCps, cpuLps,
-						gpuFps/count, gpuCps, gpuLps,
-						kpCps, kpLps)
-					if j.O.Render {
-						s += fmt.Sprintf("\x1B[u")
-					}
-					sc <- s
-				}()
-				select {
-				case <-to:
-					panic("timeout")
-				case s := <-sc:
-					fmt.Println(s)
-				}
-			}
+			*/
 		}
 	}
-	ticker.Stop()
+	/*
+		ticker.Stop()
+	*/
 	j.Stop()
 }
 

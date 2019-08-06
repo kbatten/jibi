@@ -6,8 +6,8 @@ import (
 
 type command struct {
 	s string
-	b uint8 // number of immediate bytes
-	t uint8 // clock cycles
+	b uint8     // number of immediate bytes
+	t ClockType // clock cycles
 	f func(*Cpu)
 }
 
