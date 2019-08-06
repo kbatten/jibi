@@ -24,10 +24,10 @@ type Cpu struct {
 	pc register16
 
 	// clocks
-	tClocks []*Clock // t clock cycle exported clocks
-	m       uint8    // machine cycles
-	t       uint8    // clock cycles
-	div     Word
+	clock *Clock
+	m     ClockType // machine cycles
+	t     ClockType // clock cycles
+	div   Word
 
 	// current instruction buffer
 	inst instruction
@@ -91,6 +91,7 @@ func NewCpu(mmu Mmu, bios []Byte) *Cpu {
 	commander := NewCommander("cpu")
 	cpu := &Cpu{CommanderInterface: commander,
 		a: a, b: b, c: c, d: d, e: e, f: f, l: l, h: h,
+		clock:        NewClock(),
 		ime:          Bit(1),
 		mmu:          mmu,
 		mmuKeys:      mmuKeys,
@@ -108,14 +109,22 @@ func NewCpu(mmu Mmu, bios []Byte) *Cpu {
 	return cpu
 }
 
+// return a channel that replicates internal clock
+func (c *Cpu) AttachClock() chan ClockType {
+	return c.clock.Attach()
+}
+
 func (c *Cpu) cmdClock(resp interface{}) {
-	if resp, ok := resp.(chan chan ClockType); !ok {
-		panic("invalid command response type")
-	} else {
-		clk := make(chan ClockType, 1)
-		c.tClocks = append(c.tClocks, NewClock(clk))
-		resp <- clk
-	}
+	panic("cmdClock") // possibly return c.clock.Attach()
+	/*
+		if resp, ok := resp.(chan chan ClockType); !ok {
+			panic("invalid command response type")
+		} else {
+			clk := make(chan ClockType, 1)
+			c.tClocks = append(c.tClocks, NewClock(clk))
+			resp <- clk
+		}
+	*/
 }
 
 func (c *Cpu) cmdOnInstruction(resp interface{}) {
@@ -201,11 +210,14 @@ func (c *Cpu) writeWord(addr Word, w Word) {
 }
 
 // Clock returns a new channel that holds acumulating clock ticks.
+/*
 func (c *Cpu) Clock() chan ClockType {
+	panic("Clock")
 	resp := make(chan chan ClockType)
 	c.RunCommand(CmdClockAccumulator, resp)
 	return <-resp
 }
+*/
 
 func (c *Cpu) fetch() {
 	op := opcode(c.readByte(c.pc))
@@ -294,7 +306,7 @@ func newTimer() *timer {
 	return &timer{}
 }
 
-func (t *timer) run(c uint8, f Byte, tma Byte) (Byte, bool) {
+func (t *timer) run(c ClockType, f Byte, tma Byte) (Byte, bool) {
 	overflow := false
 
 	tmaBit := uint16(1)
@@ -369,8 +381,6 @@ func (c *Cpu) step(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32
 	c.execute()   // execute c.inst instruction
 	c.timers()    // handle tima, tma, tac
 
-	for _, clk := range c.tClocks {
-		clk.AddCycles(c.t)
-	}
+	c.clock.AddCycles(c.t)
 	return c.step, false, 0, 0
 }
