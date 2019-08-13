@@ -1252,6 +1252,25 @@ func TestOpF0(t *testing.T) {
 	}
 }
 
+func TestOpF3(t *testing.T) {
+	cpu := NewCpu(newTestMmu(), []Byte{0xF3, 0xF0, 0x05})
+	defer cpu.RunCommand(CmdStop, nil)
+
+	// DI
+	cpu.fetch()
+	cpu.execute()
+	if cpu.ime != Bit(1) {
+		t.Error()
+	}
+
+	// next instruction
+	cpu.fetch()
+	cpu.execute()
+	if cpu.ime != Bit(0) {
+		t.Error()
+	}
+}
+
 func TestOpFE(t *testing.T) {
 	cpu := NewCpu(newTestMmu(), []Byte{0xFE, 0x01, 0xFE, 0x01, 0xFE, 0x0F, 0xFE, 0xF0, 0xFE, 0xF1})
 	defer cpu.RunCommand(CmdStop, nil)
