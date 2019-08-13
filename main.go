@@ -54,9 +54,6 @@ dev options:
 		Status:   config.DevStatus,
 		MaxTicks: config.DevMaxTicks,
 		LogInst:  config.DevLogInst,
-		Render:   true,
-		Keypad:   true,
-		Squash:   true,
 	}
 
 	// create jibi and run

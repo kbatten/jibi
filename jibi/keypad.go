@@ -61,19 +61,17 @@ type valueChan struct {
 type Keypad struct {
 	CommanderInterface
 
-	mmu     Mmu
-	mmuKeys AddressKeys
+	mmu Mmu
 
 	p1013low bool
 
 	keys map[Key]valueChan
 
 	ttyConfig string
-	runSetup  bool
 }
 
 // NewKeypad returns a new Keypad object and starts up a goroutine.
-func NewKeypad(mmu Mmu, runSetup bool) *Keypad {
+func NewKeypad(mmu Mmu) *Keypad {
 	commander := NewCommander("keypad")
 	keys := map[Key]valueChan{
 		// A buffer of 1 is needed because we may get a keydown before the
@@ -89,14 +87,10 @@ func NewKeypad(mmu Mmu, runSetup bool) *Keypad {
 		KeySelect: valueChan{1, make(chan bool, 1)},
 		KeyStart:  valueChan{1, make(chan bool, 1)},
 	}
-	mmuKeys := AddressKeys(0)
-	mmuKeys = mmu.LockAddr(AddrP1, mmuKeys)
 	kp := &Keypad{
 		CommanderInterface: commander,
 		mmu:                mmu,
-		mmuKeys:            mmuKeys,
 		keys:               keys,
-		runSetup:           runSetup,
 	}
 	cmdHandlers := map[Command]CommandFn{
 		CmdKeyDown:  kp.cmdKeyDown,
@@ -112,27 +106,23 @@ func NewKeypad(mmu Mmu, runSetup bool) *Keypad {
 }
 
 func (k *Keypad) Init() {
-	if k.runSetup == true {
-		// save tty config
-		out, err := exec.Command("stty", "-F", "/dev/tty", "-g").CombinedOutput()
-		if err != nil {
-			panic("stty")
-		}
-		// trim the trailing newline
-		k.ttyConfig = string(out[:len(out)-1])
-
-		// disable input buffering
-		exec.Command("stty", "-F", "/dev/tty", "cbreak", "min", "1").Run()
-		// do not display entered characters on the screen
-		exec.Command("stty", "-F", "/dev/tty", "-echo").Run()
+	// save tty config
+	out, err := exec.Command("stty", "-F", "/dev/tty", "-g").CombinedOutput()
+	if err != nil {
+		panic("stty")
 	}
+	// trim the trailing newline
+	k.ttyConfig = string(out[:len(out)-1])
+
+	// disable input buffering
+	exec.Command("stty", "-F", "/dev/tty", "cbreak", "min", "1").Run()
+	// do not display entered characters on the screen
+	exec.Command("stty", "-F", "/dev/tty", "-echo").Run()
 }
 
 func (k *Keypad) Close() {
-	if k.runSetup == true {
-		// restore tty config
-		exec.Command("stty", "-F", "/dev/tty", k.ttyConfig).Run()
-	}
+	// restore tty config
+	exec.Command("stty", "-F", "/dev/tty", k.ttyConfig).Run()
 }
 
 func (k *Keypad) String() string {
@@ -192,7 +182,7 @@ func (k *Keypad) cmdKeyDown(data interface{}) {
 				}
 				k.RunCommand(CmdKeyUp, data)
 			}()
-			k.mmu.SetInterrupt(InterruptKeypad, k.mmuKeys)
+			k.mmu.SetInterrupt(InterruptKeypad)
 		} else {
 			// this chan has a buffer of 1, so even though the write is
 			// non-blocking one keypress can be queued.
@@ -213,7 +203,7 @@ func (k *Keypad) cmdKeyUp(data interface{}) {
 }
 
 func (k *Keypad) cmdKeyCheck(data interface{}) {
-	b, _ := k.mmu.ReadIoByte(AddrP1, k.mmuKeys)
+	b := k.mmu.ReadIoByte(AddrP1)
 	p15 := (b & 0x20) >> 5
 	p14 := (b & 0x10) >> 4
 
@@ -228,11 +218,11 @@ func (k *Keypad) cmdKeyCheck(data interface{}) {
 }
 
 func (kp *Keypad) readByte(addr Word) Byte {
-	return kp.mmu.ReadByteAt(addr, kp.mmuKeys)
+	return kp.mmu.ReadByteAt(addr)
 }
 
 func (kp *Keypad) writeByte(addr Word, b Byte) {
-	kp.mmu.WriteByteAt(addr, b, kp.mmuKeys)
+	kp.mmu.WriteByteAt(addr, b)
 }
 
 func (kp *Keypad) loopKeyboard() {
