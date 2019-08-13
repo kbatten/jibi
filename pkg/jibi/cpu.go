@@ -9,8 +9,6 @@ import (
 // purpose is to handle interrupts, fetch and execute instructions, and
 // manage the clock.
 type Cpu struct {
-	CommanderInterface
-
 	// registers
 	a  register8
 	b  register8
@@ -36,13 +34,15 @@ type Cpu struct {
 	ime            Bit
 	imeDisableNext uint8
 
-	mmu     Mmu
-	mmuKeys AddressKeys
+	// timers
+	tima timer
+
+	// memory
+	mmu Mmu
 
 	// internal state
 	bios         []Byte
 	biosFinished bool
-	tima         timer
 
 	// notifications
 	notifyInst []chan string
@@ -70,43 +70,14 @@ func NewCpu(mmu Mmu, bios []Byte) *Cpu {
 	l := newRegister8(nil)
 	h := newRegister8(&l)
 
-	biosFinished := true
-	if len(bios) > 0 {
-		biosFinished = false
-		biosN := make([]Byte, 0x100)
-		copy(biosN, bios)
-		bios = biosN
-	}
-
-	mmuKeys := AddressKeys(0)
-	mmuKeys = mmu.LockAddr(AddrRom, mmuKeys)
-	mmuKeys = mmu.LockAddr(AddrRam, mmuKeys)
-	mmuKeys = mmu.LockAddr(AddrIF, mmuKeys)
-	mmuKeys = mmu.LockAddr(AddrDIV, mmuKeys)
-	mmuKeys = mmu.LockAddr(AddrTIMA, mmuKeys)
-	mmuKeys = mmu.LockAddr(AddrTMA, mmuKeys)
-	mmuKeys = mmu.LockAddr(AddrTAC, mmuKeys)
-	mmuKeys = mmu.LockAddr(AddrZero, mmuKeys)
-	mmuKeys = mmu.LockAddr(AddrIE, mmuKeys)
-
-	commander := NewCommander("cpu")
-	cpu := &Cpu{CommanderInterface: commander,
+	cpu := &Cpu{
 		a: a, b: b, c: c, d: d, e: e, f: f, l: l, h: h,
-		clock:        NewClock(),
-		ime:          Bit(1),
-		mmu:          mmu,
-		mmuKeys:      mmuKeys,
-		bios:         bios,
-		biosFinished: biosFinished,
-		hz:           hz, period: period,
+		clock: NewClock(),
+		ime:   Bit(1),
+		mmu:   mmu,
+		bios:  bios,
+		hz:    hz, period: period,
 	}
-	cmdHandlers := map[Command]CommandFn{
-		CmdClockAccumulator: cpu.cmdClock,
-		CmdString:           cpu.cmdString,
-		CmdOnInstruction:    cpu.cmdOnInstruction,
-	}
-
-	commander.start(cpu.step, cmdHandlers, nil)
 	return cpu
 }
 
@@ -124,38 +95,7 @@ func (c *Cpu) AttachInstructions() chan string {
 
 }
 
-func (c *Cpu) cmdClock(resp interface{}) {
-	panic("cmdClock") // possibly return c.clock.Attach()
-	/*
-		if resp, ok := resp.(chan chan ClockType); !ok {
-			panic("invalid command response type")
-		} else {
-			clk := make(chan ClockType, 1)
-			c.tClocks = append(c.tClocks, NewClock(clk))
-			resp <- clk
-		}
-	*/
-}
-
-func (c *Cpu) cmdOnInstruction(resp interface{}) {
-	if resp, ok := resp.(chan chan string); !ok {
-		panic("invalid command response type")
-	} else {
-		inst := make(chan string)
-		c.notifyInst = append(c.notifyInst, inst)
-		resp <- inst
-	}
-}
-
-func (c *Cpu) cmdString(resp interface{}) {
-	if resp, ok := resp.(chan string); !ok {
-		panic("invalid command response type")
-	} else {
-		resp <- c.str()
-	}
-}
-
-func (c *Cpu) str() string {
+func (c *Cpu) String() string {
 	return fmt.Sprintf(`%s
 a:%s f:%s b:%s c:%s d:%s e:%s h:%s l:%s sp:%d pc:%d
 ime:%d div:0x%04X %s`,
@@ -163,71 +103,27 @@ ime:%d div:0x%04X %s`,
 		c.ime, c.div, c.f.flagsString())
 }
 
-func (c *Cpu) String() string {
-	resp := make(chan string)
-	c.RunCommand(CmdString, resp)
-	return <-resp
-}
-
-func (c *Cpu) lockAddr(addr Word) {
-	c.mmuKeys = c.mmu.LockAddr(addr, c.mmuKeys)
-}
-
-func (c *Cpu) unlockAddr(addr Word) {
-	c.mmuKeys = c.mmu.UnlockAddr(addr, c.mmuKeys)
-}
-
 func (c *Cpu) readByte(addr Word) Byte {
 	if !c.biosFinished && addr <= 0xFF {
 		return c.bios[addr]
 	}
-	if AddrVRam <= addr && addr <= AddrRam {
-		c.lockAddr(AddrVRam)
-		defer c.unlockAddr(AddrVRam)
-	} else if AddrOam <= addr && addr <= AddrOamEnd {
-		c.lockAddr(AddrOam)
-		defer c.unlockAddr(AddrOam)
-	} else if AddrGpuRegs <= addr && addr <= AddrGpuRegsEnd {
-		c.lockAddr(AddrGpuRegs)
-		defer c.unlockAddr(AddrGpuRegs)
-	}
-	return c.mmu.ReadByteAt(addr, c.mmuKeys)
+	return c.mmu.ReadByteAt(addr)
 }
 
 func (c *Cpu) writeByte(addr Word, b Byte) {
-	if AddrVRam <= addr && addr <= AddrRam {
-		c.lockAddr(AddrVRam)
-		defer c.unlockAddr(AddrVRam)
-	} else if AddrOam <= addr && addr <= AddrOamEnd {
-		c.lockAddr(AddrOam)
-		defer c.unlockAddr(AddrOam)
-	} else if AddrGpuRegs <= addr && addr <= AddrGpuRegsEnd {
-		c.lockAddr(AddrGpuRegs)
-		defer c.unlockAddr(AddrGpuRegs)
-	}
-	c.mmu.WriteByteAt(addr, b, c.mmuKeys)
+	c.mmu.WriteByteAt(addr, b)
 }
 
 func (c *Cpu) readWord(addr Word) Word {
-	l := c.readByte(addr)
-	h := c.readByte(addr + 1)
-	return BytesToWord(h, l)
+	if !c.biosFinished && addr <= 0xFF {
+		return BytesToWord(c.bios[addr+1], c.bios[addr])
+	}
+	return c.mmu.ReadWordAt(addr)
 }
 
 func (c *Cpu) writeWord(addr Word, w Word) {
-	c.writeByte(addr, w.Low())
-	c.writeByte(addr+1, w.High())
+	c.mmu.WriteWordAt(addr, w)
 }
-
-// Clock returns a new channel that holds acumulating clock ticks.
-/*
-func (c *Cpu) Clock() chan ClockType {
-	panic("Clock")
-	resp := make(chan chan ClockType)
-	c.RunCommand(CmdClockAccumulator, resp)
-	return <-resp
-}
-*/
 
 func (c *Cpu) fetch() {
 	op := opcode(c.readByte(c.pc))
@@ -265,53 +161,52 @@ func (c *Cpu) execute() {
 
 // setInterrupt sets the specific interrupt.
 func (cpu *Cpu) setInterrupt(in Interrupt) {
-	iflags := cpu.mmu.ReadByteAt(AddrIF, 0)
-	cpu.mmu.WriteByteAt(AddrIF, iflags|Byte(in), 0)
+	cpu.mmu.SetInterrupt(in)
 }
 
 // resetInterrupt resets the specific interrupt.
-func (cpu *Cpu) resetInterrupt(i Interrupt, iflag Byte) {
-	iflag &= (Byte(i) ^ 0xFF)
-	cpu.writeByte(AddrIF, iflag)
+func (cpu *Cpu) resetInterrupt(in Interrupt) {
+	cpu.mmu.ResetInterrupt(in)
 }
 
 // getInterrupt returns the highest priority enabled interrupt.
-func (cpu *Cpu) getInterrupt(ie, iflag Byte) Interrupt {
-	if Byte(InterruptVblank)&ie&iflag != 0 {
+func (cpu *Cpu) getInterrupt() Interrupt {
+	ie := cpu.readByte(AddrIE)
+	interrupts := cpu.readByte(AddrIF)
+
+	if Byte(InterruptVblank)&ie&interrupts != 0 {
 		return InterruptVblank
-	} else if Byte(InterruptLCDC)&ie&iflag != 0 {
+	} else if Byte(InterruptLCDC)&ie&interrupts != 0 {
 		return InterruptLCDC
-	} else if Byte(InterruptTimer)&ie&iflag != 0 {
+	} else if Byte(InterruptTimer)&ie&interrupts != 0 {
 		return InterruptTimer
-	} else if Byte(InterruptSerial)&ie&iflag != 0 {
+	} else if Byte(InterruptSerial)&ie&interrupts != 0 {
 		return InterruptSerial
-	} else if Byte(InterruptKeypad)&ie&iflag != 0 {
+	} else if Byte(InterruptKeypad)&ie&interrupts != 0 {
 		return InterruptKeypad
 	}
 	return 0
 }
 
 func (cpu *Cpu) io() {
-	iflag, _ := cpu.mmu.ReadIoByte(AddrIF, cpu.mmuKeys)
+	iflags := cpu.mmu.ReadIoByte(AddrIF)
 	if cpu.ime == 0 {
-		iflag = 0 // mask all interrupts
+		iflags = 0 // mask all interrupts
 	} else {
 		ie := cpu.readByte(AddrIE)
-		iflag &= ie // mask interrupts
+		iflags &= ie // mask interrupts
 	}
-	cpu.writeByte(AddrIF, iflag)
+	cpu.writeByte(AddrIF, iflags)
 }
 
 func (cpu *Cpu) interrupt() {
 	if cpu.ime == 1 {
-		ie := cpu.readByte(AddrIE)
-		iflag := cpu.readByte(AddrIF)
-		in := cpu.getInterrupt(ie, iflag)
+		in := cpu.getInterrupt()
 		if in > 0 {
 			cpu.ime = 0
 			cpu.push(cpu.pc)
 			cpu.jp(in.Address())
-			cpu.resetInterrupt(in, iflag)
+			cpu.resetInterrupt(in)
 		}
 	}
 }
@@ -366,7 +261,7 @@ func (cpu *Cpu) timers() {
 	cpu.div = (cpu.div & 0x00FF) | (Word(div) << 8)
 	cpu.div += Word(cpu.t)
 	div = Byte(cpu.div >> 8)
-	cpu.mmu.WriteByteAt(AddrDIV, div, cpu.mmuKeys|AddressKeys(abElevated))
+	cpu.mmu.WriteElevatedByteAt(AddrDIV, div)
 
 	// update timer
 	tac := cpu.readByte(AddrTAC)
@@ -391,9 +286,6 @@ func (c *Cpu) step(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32
 	if !c.biosFinished && c.pc == 0x0100 {
 		c.biosFinished = true
 	}
-	for _, inst := range c.notifyInst {
-		inst <- c.str()
-	}
 
 	c.io()        // handle memory mapped io
 	c.interrupt() // handle interrupts
@@ -402,5 +294,10 @@ func (c *Cpu) step(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32
 	c.timers()    // handle tima, tma, tac
 
 	c.clock.AddCycles(c.t)
+
+	for _, inst := range c.notifyInst {
+		inst <- c.inst.String()
+	}
+
 	return c.step, false, 0, 0
 }

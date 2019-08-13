@@ -13,10 +13,9 @@ type Gpu struct {
 	// 0x1800-0x1BFF tile map 0
 	// 0x1C00-0x1FFF tile map 1
 
-	mmu     Mmu
-	mmuKeys AddressKeys
-	lcd     Lcd
-	clk     chan ClockType
+	mmu Mmu
+	lcd Lcd
+	clk chan ClockType
 
 	bgBuffer []Byte // 256x256 background 2bit bitmap buffer
 	fgBuffer []Byte // 144x160 foreground 2bit bitmap buffer
@@ -55,11 +54,11 @@ func (g *Gpu) cmdFrameCounter(resp interface{}) {
 }
 
 func (g *Gpu) readByte(addr Word) Byte {
-	return g.mmu.ReadByteAt(addr, g.mmuKeys)
+	return g.mmu.ReadByteAt(addr)
 }
 
 func (g *Gpu) writeByte(addr Word, b Byte) {
-	g.mmu.WriteByteAt(addr, b, g.mmuKeys)
+	g.mmu.WriteByteAt(addr, b)
 }
 
 /*
@@ -266,9 +265,6 @@ func byteToPalette(p Byte) []Byte {
 }
 
 func (g *Gpu) generateFrame() {
-	g.lockAddr(AddrVRam) // TODO: this should be in scanline vram
-	defer g.unlockAddr(AddrVRam)
-
 	// clear foreground buffer
 	for i := range g.fgBuffer {
 		g.fgBuffer[i] = 0
@@ -319,9 +315,7 @@ func (g *Gpu) generateFrame() {
 
 	// draw sprites (oam)
 	if objDisplay {
-		g.lockAddr(AddrOam) // TODO: this should be in scanline oam
 		sprites := g.getSprites(objSpriteSize)
-		g.unlockAddr(AddrOam)
 		for _, spr := range sprites {
 			spr.Paint(g.fgBuffer)
 		}
@@ -359,19 +353,8 @@ func (g *Gpu) generateFrame() {
 	*/
 }
 
-func (g *Gpu) lockAddr(addr Word) {
-	g.mmuKeys = g.mmu.LockAddr(addr, g.mmuKeys)
-}
-
-func (g *Gpu) unlockAddr(addr Word) {
-	g.mmuKeys = g.mmu.UnlockAddr(addr, g.mmuKeys)
-}
-
 func (g *Gpu) stateScanlineOam(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
-	g.lockAddr(AddrGpuRegs)
-	defer g.unlockAddr(AddrGpuRegs)
 	if first {
-		//g.lockAddr(AddrOam)
 		stat := g.readByte(AddrSTAT)
 		stat = stat&0x7C | 0x2 // mode 2
 		ly := g.readByte(AddrLY)
@@ -383,22 +366,18 @@ func (g *Gpu) stateScanlineOam(first bool, t uint32) (CommanderStateFn, bool, ui
 		}
 		g.writeByte(AddrSTAT, stat)
 		if (ly == lyc) && (stat&(0x40|0x20) == (0x40 | 0x20)) { // lyc=ly and mode 2
-			g.mmu.SetInterrupt(InterruptLCDC, g.mmuKeys)
+			g.mmu.SetInterrupt(InterruptLCDC)
 		}
 	}
 	if t >= 80 {
 		t -= 80
-		//g.unlockAddr(AddrOam)
 		return g.stateScanlineVram, true, t, 172
 	}
 	return g.stateScanlineOam, false, t, 80
 }
 
 func (g *Gpu) stateScanlineVram(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
-	g.lockAddr(AddrGpuRegs)
-	defer g.unlockAddr(AddrGpuRegs)
 	if first {
-		//g.lockAddr(AddrVRam)
 		stat := g.readByte(AddrSTAT)
 		stat = stat&0x7C | 0x3 // mode 3
 		g.writeByte(AddrSTAT, stat)
@@ -407,7 +386,6 @@ func (g *Gpu) stateScanlineVram(first bool, t uint32) (CommanderStateFn, bool, u
 	}
 	if t >= 172 {
 		t -= 172
-		//g.unlockAddr(AddrVRam)
 		return g.stateHblank, true, t, 204
 	}
 	if !first {
@@ -417,8 +395,6 @@ func (g *Gpu) stateScanlineVram(first bool, t uint32) (CommanderStateFn, bool, u
 }
 
 func (g *Gpu) stateHblank(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
-	g.lockAddr(AddrGpuRegs)
-	defer g.unlockAddr(AddrGpuRegs)
 	if first {
 		stat := g.readByte(AddrSTAT)
 		stat = stat&0x7C | 0x1 // mode 1
@@ -431,14 +407,14 @@ func (g *Gpu) stateHblank(first bool, t uint32) (CommanderStateFn, bool, uint32,
 		}
 		g.writeByte(AddrSTAT, stat)
 		if (ly == lyc) && (stat&(0x40|0x10) == (0x40 | 0x10)) { // lyc=ly and mode 1
-			g.mmu.SetInterrupt(InterruptLCDC, g.mmuKeys)
+			g.mmu.SetInterrupt(InterruptLCDC)
 		}
 	}
 	if t >= 204 {
 		t -= 204
 		ly := g.readByte(AddrLY)
 		ly++
-		g.mmu.WriteByteAt(AddrLY, ly, g.mmuKeys|AddressKeys(abElevated))
+		g.mmu.WriteElevatedByteAt(AddrLY, ly)
 		if ly == lcdHeight-1 {
 			return g.stateVblank, true, t, 456
 		}
@@ -451,8 +427,6 @@ func (g *Gpu) stateHblank(first bool, t uint32) (CommanderStateFn, bool, uint32,
 }
 
 func (g *Gpu) stateVblank(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
-	g.lockAddr(AddrGpuRegs)
-	defer g.unlockAddr(AddrGpuRegs)
 	if first {
 		stat := g.readByte(AddrSTAT)
 		stat = stat&0x7C | 0x0 // mode 0
@@ -465,9 +439,9 @@ func (g *Gpu) stateVblank(first bool, t uint32) (CommanderStateFn, bool, uint32,
 		}
 		g.writeByte(AddrSTAT, stat)
 		if (ly == lyc) && (stat&(0x40|0x04) == (0x40 | 0x04)) { // lyc=ly and mode 0
-			g.mmu.SetInterrupt(InterruptLCDC, g.mmuKeys)
+			g.mmu.SetInterrupt(InterruptLCDC)
 		}
-		g.mmu.SetInterrupt(InterruptVblank, g.mmuKeys)
+		g.mmu.SetInterrupt(InterruptVblank)
 		g.lcd.Blank()
 		g.generateFrame()
 		for _, clk := range g.frameCounters {
@@ -480,10 +454,10 @@ func (g *Gpu) stateVblank(first bool, t uint32) (CommanderStateFn, bool, uint32,
 		ly++
 		if ly > lcdHeight-1+10 {
 			ly = 0
-			g.mmu.WriteByteAt(AddrLY, ly, g.mmuKeys|AddressKeys(abElevated))
+			g.mmu.WriteElevatedByteAt(AddrLY, ly)
 			return g.stateScanlineOam, true, t, 80
 		}
-		g.mmu.WriteByteAt(AddrLY, ly, g.mmuKeys|AddressKeys(abElevated))
+		g.mmu.WriteElevatedByteAt(AddrLY, ly)
 		return g.stateVblank, false, t, 456
 	}
 	if !first {

@@ -119,7 +119,6 @@ func (c *Cpu) dec(a Byte) Byte {
 }
 
 func (c *Cpu) sbc(a, b Byte) Byte {
-	fmt.Println(c.str())
 	panic("inst")
 	carry := Byte(0)
 	if c.f.getFlag(flagC) {
@@ -260,7 +259,6 @@ func (c *Cpu) jp(addr Word) {
 }
 
 func (c *Cpu) callF(f Byte, addr Word) {
-	fmt.Println(c.str())
 	panic("untested")
 	if c.f.getFlag(f) == true {
 		c.call(addr)
