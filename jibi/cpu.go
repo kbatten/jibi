@@ -33,7 +33,8 @@ type Cpu struct {
 	inst instruction
 
 	// interrupt master enable
-	ime Bit
+	ime            Bit
+	imeDisableNext uint8
 
 	mmu     Mmu
 	mmuKeys AddressKeys
@@ -252,6 +253,14 @@ func (c *Cpu) execute() {
 	cmd.f(c)
 	c.t += cmd.t
 	c.m += cmd.t * 4
+
+	// handle disabling interrupts one instruction after DI
+	if c.imeDisableNext > 0 {
+		c.imeDisableNext--
+		if c.imeDisableNext == 0 {
+			c.ime = Bit(0)
+		}
+	}
 }
 
 // setInterrupt sets the specific interrupt.

@@ -543,8 +543,7 @@ var commandTable = map[opcode]command{
 		c.a.set(c.readByte(Word(0xFF00 + uint16(c.c.Byte()))))
 	}},
 	0xF3: command{"DI", 0, 4, func(c *Cpu) {
-		panic("untested")
-		c.ime = Bit(0)
+		c.imeDisableNext = 2 // disable interrupts after this and the next instruction
 	}},
 	0xF8: command{"LDHL SP, n", 1, 12, func(c *Cpu) {
 		panic("untested")
