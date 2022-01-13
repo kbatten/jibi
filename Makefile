@@ -3,17 +3,17 @@
 all: test build
 
 build:
-	build/env.sh go get -d
-	build/env.sh go build -o jibi-run
+	go get -d
+	go build -o jibi-run
 
 test:
-	build/env.sh go get -d
-	build/env.sh go test jibi/*
+	go get -d
+	go test jibi/*
 
 vet:
-	build/env.sh go get -d
-	build/env.sh go vet
-	build/env.sh go vet jibi/*
+	go get -d
+	go vet
+	go vet jibi/*
 
 pprof:
-	build/env.sh go test -cpuprofile cpu.prof -memprofile mem.prof -bench . jibi/*
+	go test -cpuprofile cpu.prof -memprofile mem.prof -bench . jibi/*
