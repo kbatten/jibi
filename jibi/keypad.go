@@ -70,7 +70,20 @@ type Keypad struct {
 
 	ttyConfig string
 	runSetup  bool
+
+	stty stty
 }
+
+// hacky way to call stty correctly
+type stty uint8
+
+// List of 8 buttons.
+const (
+	sttyUnkown = iota
+	sttyLinux
+	sttyMacos
+)
+
 
 // NewKeypad returns a new Keypad object and starts up a goroutine.
 func NewKeypad(mmu Mmu, runSetup bool) *Keypad {
@@ -114,7 +127,7 @@ func NewKeypad(mmu Mmu, runSetup bool) *Keypad {
 func (k *Keypad) Init() {
 	if k.runSetup == true {
 		// save tty config
-		out, err := exec.Command("stty", "-F", "/dev/tty", "-g").CombinedOutput()
+		out, err := exec.Command("stty", "-f", "/dev/tty", "-g").CombinedOutput()
 		if err != nil {
 			panic("stty")
 		}
