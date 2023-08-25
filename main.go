@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
-	"github.com/docopt/docopt-go"
-	"github.com/kbatten/jibi/jibi"
 	"os"
 	"runtime/pprof"
 	"strconv"
+
+	"github.com/docopt/docopt-go"
+
+	"jibi/pkg/jibi"
 )
 
 func main() {
