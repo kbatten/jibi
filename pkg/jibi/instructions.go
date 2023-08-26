@@ -27,7 +27,23 @@ func (i instruction) String() string {
 // z reset
 // n reset
 // h and c set or reset according to operation
-func (c *Cpu) addWordR(a Word, b Byte) Word {
+func (c *Cpu) addWord(a Word, b Byte) Word {
+	sum := a + Word(b)
+	// check half carry
+	if (a&0xFF)+Word(b) > 0xFF {
+		c.f.setFlag(flagH)
+	}
+	// check carry
+	if sum < a {
+		c.f.setFlag(flagC)
+	}
+	// reset other flags
+	c.f.resetFlag(flagZ)
+	c.f.resetFlag(flagN)
+	return sum
+}
+
+func (c *Cpu) addWords(a Word, b Word) Word {
 	sum := a + Word(b)
 	// check half carry
 	if (a&0xFF)+Word(b) > 0xFF {
