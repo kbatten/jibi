@@ -50,7 +50,7 @@ var commandTable = map[opcode]command{
 		c.a.set(c.rlc(c.a.Byte()))
 	}},
 	0x08: command{"LD (nn), SP", 2, 20, func(c *Cpu) {
-		panic("untested")
+		// panic("untested") XX
 		c.writeWord(BytesToWord(c.inst.p[1], c.inst.p[0]), c.sp)
 	}},
 	0x0B: command{"DEC BC", 0, 8, func(c *Cpu) {
@@ -66,6 +66,9 @@ var commandTable = map[opcode]command{
 	}},
 	0x0E: command{"LD C, #", 1, 8, func(c *Cpu) {
 		c.c.set(c.inst.p[0])
+	}},
+	0x10: command{"STOP", 0, 4, func(c *Cpu) {
+		// TODO: stop until keypress
 	}},
 	0x11: command{"LD DE, nn", 2, 12, func(c *Cpu) {
 		c.d.setWord(BytesToWord(c.inst.p[1], c.inst.p[0]))
@@ -96,8 +99,8 @@ var commandTable = map[opcode]command{
 		c.jr(int8(c.inst.p[0]))
 	}},
 	0x19: command{"ADD HL,DE", 0, 8, func(c *Cpu) {
-		panic("broken")
-		//c.h.setWord(c.add()
+		// panic("untested") XXX
+		c.h.setWord(c.addWords(c.h.Word(), c.d.Word()))
 	}},
 	0x1A: command{"LD A, (DE)", 0, 8, func(c *Cpu) {
 		c.a.set(c.readByte(c.d.Word()))
@@ -136,7 +139,7 @@ var commandTable = map[opcode]command{
 		c.h.set(c.inc(c.h.Byte()))
 	}},
 	0x25: command{"DEC H", 0, 4, func(c *Cpu) {
-		panic("untested")
+		// panic("untested") XXX
 		c.h.set(c.dec(c.h.Byte()))
 	}},
 	0x26: command{"LD H, #", 1, 8, func(c *Cpu) {
@@ -200,6 +203,10 @@ var commandTable = map[opcode]command{
 	}},
 	0x36: command{"LD (HL), n", 1, 12, func(c *Cpu) {
 		c.writeByte(c.h.Word(), c.inst.p[0])
+	}},
+	0x38: command{"JR C,*", 1, 8, func(c *Cpu) {
+		// panic("untested")
+		c.jrF(flagC, int8(c.inst.p[0]))
 	}},
 	0x3A: command{"LDD A, (HL)", 0, 8, func(c *Cpu) {
 		panic("untested")
@@ -299,7 +306,7 @@ var commandTable = map[opcode]command{
 		c.a.set(c.readByte(c.h.Word()))
 	}},
 	0x7F: command{"LD A, A", 0, 4, func(c *Cpu) {
-		panic("untested")
+		// panic("untested") XXX
 		c.a.set(c.a.Byte())
 	}},
 	0x80: command{"ADD A, B", 0, 4, func(c *Cpu) {
@@ -537,6 +544,9 @@ var commandTable = map[opcode]command{
 	0xCD: command{"CALL nn", 2, 12, func(c *Cpu) {
 		c.call(BytesToWord(c.inst.p[1], c.inst.p[0]))
 	}},
+	0xD2: command{"JP NC,nn", 2, 12, func(c *Cpu) {
+		c.jpNF(flagC, BytesToWord(c.inst.p[1], c.inst.p[0]))
+	}},
 	0xE0: command{"LDH (n), A", 1, 12, func(c *Cpu) {
 		c.writeByte(Word(0xFF00+uint16(c.inst.p[0])), c.a.Byte())
 	}},
@@ -580,5 +590,11 @@ var commandTable = map[opcode]command{
 	}},
 	0xFE: command{"CP #", 1, 8, func(c *Cpu) {
 		c.sub(c.a.Byte(), c.inst.p[0])
+	}},
+	0xFF: command{"RST 0x38", 0, 32, func(c *Cpu) {
+		// panic("untested") XXX
+		c.pc-- // TODO: if we increment after execute, this needs to be removed
+		c.push(c.pc)
+		c.jp(c.pc + 0x38)
 	}},
 }

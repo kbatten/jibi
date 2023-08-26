@@ -44,17 +44,14 @@ func (c *Cpu) addWord(a Word, b Byte) Word {
 }
 
 func (c *Cpu) addWords(a Word, b Word) Word {
-	sum := a + Word(b)
-	// check half carry
-	if (a&0xFF)+Word(b) > 0xFF {
+	sum := a + b
+	if a&0x0FFF+b&0x0FFF > 0x0FFF {
 		c.f.setFlag(flagH)
 	}
-	// check carry
-	if sum < a {
+	if uint32(a)+uint32(b) > 0xFFFF {
 		c.f.setFlag(flagC)
 	}
 	// reset other flags
-	c.f.resetFlag(flagZ)
 	c.f.resetFlag(flagN)
 	return sum
 }
@@ -274,16 +271,30 @@ func (c *Cpu) jp(addr Word) {
 	c.pc = register16(addr)
 }
 
-func (c *Cpu) callF(f Byte, addr Word) {
-	panic("untested")
+func (c *Cpu) jpF(f Byte, addr Word) {
+	// panic("untested") XXX
 	if c.f.getFlag(f) == true {
-		c.call(addr)
+		c.jp(addr)
+	}
+}
+
+func (c *Cpu) jpNF(f Byte, addr Word) {
+	// panic("untested") XXX
+	if c.f.getFlag(f) == false {
+		c.jp(addr)
 	}
 }
 
 func (c *Cpu) call(addr Word) {
 	c.push(c.pc)
 	c.jp(addr)
+}
+
+func (c *Cpu) callF(f Byte, addr Word) {
+	panic("untested")
+	if c.f.getFlag(f) == true {
+		c.call(addr)
+	}
 }
 
 func (c *Cpu) pop() Word {
