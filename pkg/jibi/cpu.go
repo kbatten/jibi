@@ -32,6 +32,7 @@ type Cpu struct {
 
 	// interrupt master enable
 	ime            Bit
+	imeEnableNext uint8
 	imeDisableNext uint8
 
 	// timers
@@ -151,6 +152,12 @@ func (c *Cpu) execute() {
 	c.m += cmd.t * 4
 
 	// handle disabling interrupts one instruction after DI
+	if c.imeEnableNext > 0 {
+		c.imeEnableNext--
+		if c.imeEnableNext == 0 {
+			c.ime = Bit(1)
+		}
+	}
 	if c.imeDisableNext > 0 {
 		c.imeDisableNext--
 		if c.imeDisableNext == 0 {
@@ -279,7 +286,7 @@ func (cpu *Cpu) timers() {
 	cpu.writeByte(AddrTIMA, tima)
 }
 
-func (c *Cpu) step(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
+func (c *Cpu) step() {
 	// reset clocks
 	c.m = 0
 	c.t = 0
@@ -298,6 +305,4 @@ func (c *Cpu) step(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32
 	for _, inst := range c.notifyInst {
 		inst <- c.inst.String()
 	}
-
-	return c.step, false, 0, 0
 }

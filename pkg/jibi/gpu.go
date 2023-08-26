@@ -5,8 +5,6 @@ import ()
 // A Gpu is the graphics processing unit. It handles drawing the background,
 // window and sprites. It also triggers interrutps.
 type Gpu struct {
-	CommanderInterface
-
 	// 0x0000-0x07FF tile set 1 0-127
 	// 0x0800-0x0FFF tile set 1 128-255, set 0 (-1)-(-128)
 	// 0x1000-0x17FF tile set 0 0-127
@@ -26,16 +24,12 @@ type Gpu struct {
 
 // NewGpu creates a Gpu and starts a goroutine.
 func NewGpu(mmu Mmu, lcd Lcd, clk chan ClockType) *Gpu {
-	commander := NewCommander("gpu")
-	gpu := &Gpu{CommanderInterface: commander,
+	gpu := &Gpu{
 		mmu: mmu, lcd: lcd, clk: clk,
 		bgBuffer: make([]Byte, 256*256),
 		fgBuffer: make([]Byte, int(lcdWidth)*int(lcdHeight)),
 	}
-	cmdHandlers := map[Command]CommandFn{
-		CmdFrameCounter: gpu.cmdFrameCounter,
-	}
-	commander.start(gpu.stateScanlineOam, cmdHandlers, clk)
+	go gpu.spin()
 	mmu.SetGpu(gpu)
 	return gpu
 }
@@ -464,4 +458,22 @@ func (g *Gpu) stateVblank(first bool, t uint32) (CommanderStateFn, bool, uint32,
 		panic("wasted gpu cycle")
 	}
 	return g.stateVblank, false, t, 456
+}
+
+func (g *Gpu) spin() {
+	state := g.stateScanlineOam
+	first := true
+
+	tAvailable := uint32(0)
+	tNext := uint32(0)
+	var t ClockType
+	for {
+		select {
+			case t = <- g.clk:
+				tAvailable += uint32(t)
+				for (first || tAvailable >= tNext) {
+					state, first, tAvailable, tNext = state(first, tAvailable)
+				}
+		}
+	}
 }

@@ -54,7 +54,7 @@ var commandTable = map[opcode]command{
 		c.writeWord(BytesToWord(c.inst.p[1], c.inst.p[0]), c.sp)
 	}},
 	0x0B: command{"DEC BC", 0, 8, func(c *Cpu) {
-		panic("untested")
+		// panic("untested") XXX
 		c.b.setWord(c.b.Word() - 1)
 	}},
 	0x0C: command{"INC C", 0, 4, func(c *Cpu) {
@@ -155,7 +155,7 @@ var commandTable = map[opcode]command{
 		c.jrF(flagZ, int8(c.inst.p[0]))
 	}},
 	0x2A: command{"LDI A, (HL)", 0, 8, func(c *Cpu) {
-		panic("untested")
+		// panic("untested") XXX
 		c.a.set(c.readByte(c.h.Word()))
 		c.h.setWord(c.h.Word() + 1)
 	}},
@@ -170,6 +170,13 @@ var commandTable = map[opcode]command{
 	0x2E: command{"LD L, #", 1, 8, func(c *Cpu) {
 		// panic("untested") XXX
 		c.l.set(c.inst.p[0])
+	}},
+	0x2F: command{"CPL", 0, 4, func(c *Cpu) {
+		// panic("untested") XXX
+		v := c.a.Byte() ^ Byte(0xFF)
+		c.a.set(v)
+		c.f.setFlag(flagN)
+		c.f.setFlag(flagH)
 	}},
 	0x31: command{"LD SP, nn", 2, 12, func(c *Cpu) {
 		c.sp = register16(BytesToWord(c.inst.p[1], c.inst.p[0]))
@@ -191,7 +198,6 @@ var commandTable = map[opcode]command{
 		c.writeByte(c.h.Word(), v)
 	}},
 	0x36: command{"LD (HL), n", 1, 12, func(c *Cpu) {
-		panic("untested")
 		c.writeByte(c.h.Word(), c.inst.p[0])
 	}},
 	0x3A: command{"LDD A, (HL)", 0, 8, func(c *Cpu) {
@@ -277,7 +283,6 @@ var commandTable = map[opcode]command{
 		c.a.set(c.d.Byte())
 	}},
 	0x7B: command{"LD A, E", 0, 4, func(c *Cpu) {
-		// panic("untested") XXX
 		c.a.set(c.e.Byte())
 	}},
 	0x7C: command{"LD A, H", 0, 4, func(c *Cpu) {
@@ -507,6 +512,11 @@ var commandTable = map[opcode]command{
 	0xCB11: command{"RL C", 0, 8, func(c *Cpu) {
 		c.c.set(c.rl(c.c.Byte()))
 	}},
+	0xCB37: command{"SWAP A", 0, 8, func(c *Cpu) {
+		// panic("untested") XXX
+		v := c.a.Byte()
+		c.a.set(v >> 4 | v << 4)
+	}},
 	0xCB7C: command{"BIT 7, H", 0, 8, func(c *Cpu) {
 		// 0xCB40 + 8*b(7) + r(H, 4)
 		c.bit(7, c.h.Byte())
@@ -553,6 +563,9 @@ var commandTable = map[opcode]command{
 		panic("untested")
 		nn := BytesToWord(c.inst.p[1], c.inst.p[0])
 		c.a.set(c.readByte(nn))
+	}},
+	0xFB: command{"EI", 0, 4, func(c *Cpu) {
+		c.imeEnableNext = 2 // enable interrupts after this and the next instruction
 	}},
 	0xFE: command{"CP #", 1, 8, func(c *Cpu) {
 		c.sub(c.a.Byte(), c.inst.p[0])

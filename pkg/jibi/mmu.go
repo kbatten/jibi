@@ -278,11 +278,13 @@ func (m *RomOnlyMmu) WriteByteAt(addr Word, b Byte) {
 			prevBit7 := m.gpuregs[addr-start] & 0x80
 			bit7 := b & 0x80
 			if prevBit7 == 0 && bit7 != 0 {
-				panic("gpu run")
-				m.gpu.RunCommand(CmdPlay, nil)
+				// TODO: turn off LCD
+				//panic("gpu run")
+				//m.gpu.RunCommand(CmdPlay, nil)
 			} else if prevBit7 != 0 && bit7 == 0 {
+				// TODO: turn on LCD
 				panic("gpu pause")
-				m.gpu.RunCommand(CmdPause, nil)
+				//m.gpu.RunCommand(CmdPause, nil)
 				m.gpuregs[AddrLY-start] = 0
 			}
 		} else if addr == AddrLY {

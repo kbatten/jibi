@@ -697,6 +697,20 @@ func TestOp32(t *testing.T) {
 	}
 }
 
+func TestOp36(t *testing.T) {
+	cpu := NewCpu(newTestMmu(), []Byte{0x36, 0x89})
+
+	// LD (HL), n
+	cpu.h.setWord(0xFF80)
+	cpu.fetch()
+	cpu.execute()
+	b := cpu.readByte(Word(0xFF80))
+	if b != Byte(0x89) {
+		t.Error()
+	}
+}
+
+
 func TestOp3E(t *testing.T) {
 	cpu := NewCpu(newTestMmu(), []Byte{0x3E, 0x32})
 
@@ -730,6 +744,19 @@ func TestOp77(t *testing.T) {
 	cpu.execute()
 	b := cpu.readByte(Word(0xFF80))
 	if b != Byte(0x89) {
+		t.Error()
+	}
+}
+
+func TestOp7B(t *testing.T) {
+	cpu := NewCpu(newTestMmu(), []Byte{0x7B})
+
+	// LD A, E
+	cpu.a.set(0x00)
+	cpu.e.set(0x89)
+	cpu.fetch()
+	cpu.execute()
+	if cpu.a.Byte() != Byte(0x89) {
 		t.Error()
 	}
 }

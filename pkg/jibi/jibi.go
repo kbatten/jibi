@@ -61,6 +61,12 @@ func (j Jibi) Run() {
 		}
 	}
 
+	go func() {
+		for {
+			j.cpu.step()
+		}
+	}()
+
 	for running := true; running; {
 		select {
 		case s := <-instructions:
