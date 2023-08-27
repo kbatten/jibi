@@ -558,9 +558,8 @@ var commandTable = map[opcode]command{
 	}},
 	0xEF: command{"RST 0x28", 0, 32, func(c *Cpu) {
 		// panic("untested") XXX
-		c.pc-- // TODO: if we increment after execute, this needs to be removed
 		c.push(c.pc)
-		c.jp(c.pc + 0x28)
+		c.jp(0x28)
 	}},
 	0xEA: command{"LD (nn), A", 2, 16, func(c *Cpu) {
 		// panic("untested") XXX
@@ -593,8 +592,7 @@ var commandTable = map[opcode]command{
 	}},
 	0xFF: command{"RST 0x38", 0, 32, func(c *Cpu) {
 		// panic("untested") XXX
-		c.pc-- // TODO: if we increment after execute, this needs to be removed
 		c.push(c.pc)
-		c.jp(c.pc + 0x38)
+		c.jp(0x38)
 	}},
 }
