@@ -56,24 +56,24 @@ func (g *Gpu) writeByte(addr Word, b Byte) {
 }
 
 /*
-func paintTile(frameBuffer []Byte, tileData []Byte, x, y uint8, above, xflip, yflip bool, palette Byte) {
-	addr := 0
-	// convert tile data into 2bpp bitmap
-	for yOff := uint8(0); yOff < 8; yOff++ {
-		yInd := (uint16(y) + uint16(yOff)) * uint16(256)
-		l := tileData[addr]
-		h := tileData[addr+1]
-		addr += 2
+	func paintTile(frameBuffer []Byte, tileData []Byte, x, y uint8, above, xflip, yflip bool, palette Byte) {
+		addr := 0
+		// convert tile data into 2bpp bitmap
+		for yOff := uint8(0); yOff < 8; yOff++ {
+			yInd := (uint16(y) + uint16(yOff)) * uint16(256)
+			l := tileData[addr]
+			h := tileData[addr+1]
+			addr += 2
 
-		for xOff := uint8(0); xOff < 8; xOff++ {
-			px := (((h >> (7 - xOff)) & 0x01) << 1) + (l>>(7-xOff))&0x01
-			ind := uint16(x) + uint16(xOff) + yInd
-			if uint32(ind) < uint32(len(frameBuffer)) {
-				frameBuffer[ind] = px
+			for xOff := uint8(0); xOff < 8; xOff++ {
+				px := (((h >> (7 - xOff)) & 0x01) << 1) + (l>>(7-xOff))&0x01
+				ind := uint16(x) + uint16(xOff) + yInd
+				if uint32(ind) < uint32(len(frameBuffer)) {
+					frameBuffer[ind] = px
+				}
 			}
 		}
 	}
-}
 */
 func (g *Gpu) generateLine(line Byte) []Byte {
 	// get background
@@ -469,11 +469,11 @@ func (g *Gpu) spin() {
 	var t ClockType
 	for {
 		select {
-			case t = <- g.clk:
-				tAvailable += uint32(t)
-				for (first || tAvailable >= tNext) {
-					state, first, tAvailable, tNext = state(first, tAvailable)
-				}
+		case t = <-g.clk:
+			tAvailable += uint32(t)
+			for first || tAvailable >= tNext {
+				state, first, tAvailable, tNext = state(first, tAvailable)
+			}
 		}
 	}
 }

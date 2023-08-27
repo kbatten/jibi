@@ -527,7 +527,7 @@ var commandTable = map[opcode]command{
 	0xCB37: command{"SWAP A", 0, 8, func(c *Cpu) {
 		// panic("untested") XXX
 		v := c.a.Byte()
-		c.a.set(v >> 4 | v << 4)
+		c.a.set(v>>4 | v<<4)
 	}},
 	0xCB7C: command{"BIT 7, H", 0, 8, func(c *Cpu) {
 		// 0xCB40 + 8*b(7) + r(H, 4)

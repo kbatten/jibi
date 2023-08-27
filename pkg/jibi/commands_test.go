@@ -710,7 +710,6 @@ func TestOp36(t *testing.T) {
 	}
 }
 
-
 func TestOp3E(t *testing.T) {
 	cpu := NewCpu(newTestMmu(), []Byte{0x3E, 0x32})
 

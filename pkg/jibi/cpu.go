@@ -32,7 +32,7 @@ type Cpu struct {
 
 	// interrupt master enable
 	ime            Bit
-	imeEnableNext uint8
+	imeEnableNext  uint8
 	imeDisableNext uint8
 
 	// timers
