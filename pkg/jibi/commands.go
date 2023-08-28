@@ -137,7 +137,6 @@ var commandTable = map[opcode]command{
 		c.a.set(c.rr(c.a.Byte()))
 	}},
 	0x20: command{"JR NZ, *", 1, 8, func(c *Cpu) {
-		panic(fmt.Sprintf("untested %v", c.inst.o))
 		c.jrNF(flagZ, int8(c.inst.p[0]))
 	}},
 	0x21: command{"LD HL, nn", 2, 12, func(c *Cpu) {

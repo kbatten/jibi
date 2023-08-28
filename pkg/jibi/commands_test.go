@@ -541,10 +541,10 @@ func TestOp1A(t *testing.T) {
 }
 
 func TestOp20(t *testing.T) {
-	cpu := NewCpu(newTestMmu(), []Byte{0x20, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0xFC})
+	// JR NZ, *
 
-	// JR NZ, 05 -- Z
-	cpu.pc = 0
+	// Z
+	cpu := NewCpu(newTestMmu(), []Byte{0x20, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0xFC})
 	cpu.f.setFlag(flagZ)
 	cpu.fetch()
 	cpu.execute()
@@ -552,20 +552,22 @@ func TestOp20(t *testing.T) {
 		t.Error()
 	}
 
-	// JR NZ, 05 -- NZ, positive offset
-	cpu.pc = 0
-	cpu.f.resetFlag(flagZ)
-	cpu.fetch()
-	cpu.execute()
-	if cpu.pc != Word(0x07) {
-		t.Error()
-	}
-
-	// JR NZ, FC -- NZ, negative offset
+	// NZ, positive offset
+	cpu := NewCpu(newTestMmu(), []Byte{0x20, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0xFC})
 	cpu.f.resetFlag(flagZ)
 	cpu.fetch()
 	cpu.execute()
 	if cpu.pc != Word(0x05) {
+		t.Error()
+	}
+
+	// JNZ, negative offset
+	cpu := NewCpu(newTestMmu(), []Byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0xFC})
+	cpu.pc = 0x07
+	cpu.f.resetFlag(flagZ)
+	cpu.fetch()
+	cpu.execute()
+	if cpu.pc != Word(0x03) {
 		t.Error()
 	}
 }

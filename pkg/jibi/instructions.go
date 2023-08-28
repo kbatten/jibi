@@ -58,8 +58,8 @@ func (c *Cpu) addWords(a Word, b Word) Word {
 	return sum
 }
 
+// test if a bit is set
 func (c *Cpu) bit(b uint8, n Byte) {
-	panic("untested")
 	set := 1<<b&n == 1<<b
 	if !set {
 		c.f.setFlag(flagZ)
