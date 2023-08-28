@@ -77,6 +77,7 @@ var commandTable = map[opcode]command{
 		c.c.set(c.inst.p[0])
 	}},
 	0x10: command{"STOP", 0, 4, func(c *Cpu) {
+		panic(fmt.Sprintf("untested %v", c.inst.o))
 		// TODO: stop until keypress
 	}},
 	0x11: command{"LD DE, nn", 2, 12, func(c *Cpu) {
@@ -202,6 +203,7 @@ var commandTable = map[opcode]command{
 		c.a.set(c.xor(c.a.Byte(), Byte(0xFF)))
 	}},
 	0x31: command{"LD SP, nn", 2, 12, func(c *Cpu) {
+		panic(fmt.Sprintf("untested %v", c.inst.o))
 		c.sp = register16(BytesToWord(c.inst.p[1], c.inst.p[0]))
 	}},
 	0x32: command{"LDD (HL), A", 0, 8, func(c *Cpu) {
@@ -307,6 +309,7 @@ var commandTable = map[opcode]command{
 		c.a.set(c.b.Byte())
 	}},
 	0x79: command{"LD A, C", 0, 4, func(c *Cpu) {
+		panic(fmt.Sprintf("untested %v", c.inst.o))
 		c.a.set(c.c.Byte())
 	}},
 	0x7A: command{"LD A, D", 0, 4, func(c *Cpu) {
@@ -467,6 +470,7 @@ var commandTable = map[opcode]command{
 		c.a.set(c.xor(c.a.Byte(), c.readByte(c.h.Word())))
 	}},
 	0xAF: command{"XOR A", 0, 4, func(c *Cpu) {
+		panic(fmt.Sprintf("untested %v", c.inst.o))
 		c.a.set(c.xor(c.a.Byte(), c.a.Byte()))
 	}},
 	0xB0: command{"OR B", 0, 4, func(c *Cpu) {
