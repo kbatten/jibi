@@ -571,9 +571,9 @@ func TestOp20(t *testing.T) {
 }
 
 func TestOp21(t *testing.T) {
-	cpu := NewCpu(newTestMmu(), []Byte{0x21, 0x32, 0x01})
-
 	// LD HL, nn
+
+	cpu := NewCpu(newTestMmu(), []Byte{0x21, 0x32, 0x01})
 	cpu.fetch()
 	cpu.execute()
 	if cpu.h.Word() != Word(0x0132) {
@@ -670,9 +670,9 @@ func TestOp28(t *testing.T) {
 }
 
 func TestOp31(t *testing.T) {
-	cpu := NewCpu(newTestMmu(), []Byte{0x31, 0x32, 0x01})
-
 	// LD SP, nn
+
+	cpu := NewCpu(newTestMmu(), []Byte{0x31, 0x32, 0x01})
 	cpu.fetch()
 	cpu.execute()
 	if cpu.sp != Word(0x0132) {
@@ -681,9 +681,9 @@ func TestOp31(t *testing.T) {
 }
 
 func TestOp32(t *testing.T) {
-	cpu := NewCpu(newTestMmu(), []Byte{0x32})
-
 	// LDD (HL), A
+
+	cpu := NewCpu(newTestMmu(), []Byte{0x32})
 	cpu.a.set(0x89)
 	cpu.h.setWord(0xFF80)
 	cpu.fetch()
@@ -813,10 +813,10 @@ func TestOpA8(t *testing.T) {
 }
 
 func TestOpAF(t *testing.T) {
-	cpu := NewCpu(newTestMmu(), []Byte{0xAF})
-
 	// XOR A  -- Z
+
 	// test with all flags set
+	cpu := NewCpu(newTestMmu(), []Byte{0xAF})
 	cpu.f.set(Byte(0xFF))
 	cpu.a.set(Byte(0x0F))
 	cpu.fetch()
@@ -838,6 +838,7 @@ func TestOpAF(t *testing.T) {
 	}
 
 	// test with all flags reset
+	cpu := NewCpu(newTestMmu(), []Byte{0xAF})
 	cpu.f.set(Byte(0x00))
 	cpu.a.set(Byte(0x0F))
 	cpu.fetch()
@@ -1097,10 +1098,11 @@ func TestOpCB11(t *testing.T) {
 }
 
 func TestOpCB7C(t *testing.T) {
-	cpu := NewCpu(newTestMmu(), []Byte{0xCB, 0x7C})
+	// BIT 7, H
 
-	// BIT 7, H -- NZ
 	// test with all flags set
+	// NZ
+	cpu := NewCpu(newTestMmu(), []Byte{0xCB, 0x7C})
 	cpu.f.set(Byte(0xFF))
 	cpu.h.set(Byte(0x80))
 	cpu.fetch()
@@ -1114,10 +1116,9 @@ func TestOpCB7C(t *testing.T) {
 	if cpu.f.getFlag(flagH) != true {
 		t.Error()
 	}
-	cpu.f.reset()
 
-	// BIT 7, H -- Z zzz
-	cpu.pc = 0
+	// Z
+	cpu := NewCpu(newTestMmu(), []Byte{0xCB, 0x7C})
 	cpu.h.set(Byte(0x7F))
 	cpu.fetch()
 	cpu.execute()
@@ -1130,7 +1131,38 @@ func TestOpCB7C(t *testing.T) {
 	if cpu.f.getFlag(flagH) != true {
 		t.Error()
 	}
-	cpu.f.reset()
+
+	// test with all flags reset
+	// NZ
+	cpu := NewCpu(newTestMmu(), []Byte{0xCB, 0x7C})
+	cpu.f.set(Byte(0x00))
+	cpu.h.set(Byte(0x80))
+	cpu.fetch()
+	cpu.execute()
+	if cpu.f.getFlag(flagZ) != false {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagN) != false {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagH) != true {
+		t.Error()
+	}
+
+	// Z
+	cpu := NewCpu(newTestMmu(), []Byte{0xCB, 0x7C})
+	cpu.h.set(Byte(0x7F))
+	cpu.fetch()
+	cpu.execute()
+	if cpu.f.getFlag(flagZ) != true {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagN) != false {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagH) != true {
+		t.Error()
+	}
 }
 
 func TestOpCB87(t *testing.T) {

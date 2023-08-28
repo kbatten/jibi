@@ -141,7 +141,6 @@ var commandTable = map[opcode]command{
 		c.jrNF(flagZ, int8(c.inst.p[0]))
 	}},
 	0x21: command{"LD HL, nn", 2, 12, func(c *Cpu) {
-		panic(fmt.Sprintf("untested %v", c.inst.o))
 		c.h.setWord(BytesToWord(c.inst.p[1], c.inst.p[0]))
 	}},
 	0x22: command{"LDI (HL), A", 0, 8, func(c *Cpu) {
@@ -203,11 +202,9 @@ var commandTable = map[opcode]command{
 		c.a.set(c.xor(c.a.Byte(), Byte(0xFF)))
 	}},
 	0x31: command{"LD SP, nn", 2, 12, func(c *Cpu) {
-		panic(fmt.Sprintf("untested %v", c.inst.o))
 		c.sp = register16(BytesToWord(c.inst.p[1], c.inst.p[0]))
 	}},
 	0x32: command{"LDD (HL), A", 0, 8, func(c *Cpu) {
-		panic(fmt.Sprintf("untested %v", c.inst.o))
 		c.writeByte(c.h.Word(), c.a.Byte())
 		c.h.setWord(c.h.Word() - 1)
 	}},
@@ -470,7 +467,6 @@ var commandTable = map[opcode]command{
 		c.a.set(c.xor(c.a.Byte(), c.readByte(c.h.Word())))
 	}},
 	0xAF: command{"XOR A", 0, 4, func(c *Cpu) {
-		panic(fmt.Sprintf("untested %v", c.inst.o))
 		c.a.set(c.xor(c.a.Byte(), c.a.Byte()))
 	}},
 	0xB0: command{"OR B", 0, 4, func(c *Cpu) {
@@ -564,7 +560,6 @@ var commandTable = map[opcode]command{
 		c.a.set(v>>4 | v<<4)
 	}},
 	0xCB7C: command{"BIT 7, H", 0, 8, func(c *Cpu) {
-		panic(fmt.Sprintf("untested %v", c.inst.o))
 		// 0xCB40 + 8*b(7) + r(H, 4)
 		c.bit(7, c.h.Byte())
 	}},
