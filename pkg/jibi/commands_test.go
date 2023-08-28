@@ -815,8 +815,8 @@ func TestOpA8(t *testing.T) {
 func TestOpAF(t *testing.T) {
 	cpu := NewCpu(newTestMmu(), []Byte{0xAF})
 
-	// XOR A -- Z
-	cpu.pc = 0
+	// XOR A A
+	// test all flags set
 	cpu.f.set(Byte(0xFF))
 	cpu.a.set(Byte(0x0F))
 	cpu.fetch()
@@ -836,7 +836,27 @@ func TestOpAF(t *testing.T) {
 	if cpu.f.getFlag(flagC) != false {
 		t.Error()
 	}
-	cpu.f.reset()
+
+	// test all flags unset
+	cpu.f.set(Byte(0x00))
+	cpu.a.set(Byte(0x0F))
+	cpu.fetch()
+	cpu.execute()
+	if cpu.a.Byte() != Byte(0x00) {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagZ) != true {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagN) != false {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagH) != false {
+		t.Error()
+	}
+	if cpu.f.getFlag(flagC) != false {
+		t.Error()
+	}
 }
 
 func TestOpB1(t *testing.T) {

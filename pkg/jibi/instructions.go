@@ -76,7 +76,6 @@ func (c *Cpu) res(b uint8, n Byte) Byte {
 }
 
 func (c *Cpu) xor(a, b Byte) Byte {
-	panic("untested")
 	r := a ^ b
 	c.f.reset()
 	if r == 0 {
