@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+// quit   0x1b <esc>
 // up     0x77 w
 // down   0x73 s
 // left   0x61 a
@@ -14,12 +15,13 @@ import (
 // select 0x5C \
 // start  0x0A <enter>
 
-// A Key is one of the 8 buttons.
+// A Key is one of the 9 buttons (8 Game Boy + Quit).
 type Key uint8
 
-// List of 8 buttons.
+// List of 8 buttons plus quit.
 const (
-	KeyUp Key = iota
+	KeyQuit Key = iota
+	KeyUp
 	KeyDown
 	KeyLeft
 	KeyRight
@@ -31,6 +33,8 @@ const (
 
 func (k Key) String() string {
 	switch k {
+	case KeyQuit:
+		return "quit"
 	case KeyUp:
 		return "up"
 	case KeyDown:
@@ -51,6 +55,20 @@ func (k Key) String() string {
 	return "UNKNOWN"
 }
 
+// keyMap holds the mapping from raw byte (ASCII) to Game Boy Key.
+var keyMap = map[byte]Key{
+	'\x1b':  KeyQuit,
+	'w':     KeyUp,
+	's':     KeyDown,
+	'a':     KeyLeft,
+	'd':     KeyRight,
+	'.':     KeyB,
+	'/':     KeyA,
+	'\\':    KeySelect,
+	'\n':    KeyStart,
+	'\r':    KeyStart,
+}
+
 type valueChan struct {
 	v Byte
 	c chan bool
@@ -69,24 +87,29 @@ type Keypad struct {
 
 	ttyConfig string
 	runSetup  bool
+
+	// quit is closed when the escape key is pressed.
+	quit chan struct{}
+}
+
+// Quit returns a channel that is closed when the escape key is pressed.
+func (k *Keypad) Quit() chan struct{} {
+	return k.quit
 }
 
 // NewKeypad returns a new Keypad object and starts up a goroutine.
 func NewKeypad(mmu Mmu, runSetup bool) *Keypad {
 	commander := NewCommander("keypad")
 	keys := map[Key]valueChan{
-		// A buffer of 1 is needed because we may get a keydown before the
-		// keyup for that key has been processed. The write to the chan is
-		// non-blocking so more than 1 keydown will simply be ignored, which
-		// is the desired behavior anyway.
-		KeyUp:     valueChan{1, make(chan bool, 1)},
-		KeyDown:   valueChan{1, make(chan bool, 1)},
-		KeyLeft:   valueChan{1, make(chan bool, 1)},
-		KeyRight:  valueChan{1, make(chan bool, 1)},
-		KeyB:      valueChan{1, make(chan bool, 1)},
-		KeyA:      valueChan{1, make(chan bool, 1)},
-		KeySelect: valueChan{1, make(chan bool, 1)},
-		KeyStart:  valueChan{1, make(chan bool, 1)},
+		KeyQuit:     valueChan{1, make(chan bool, 1)},
+		KeyUp:       valueChan{1, make(chan bool, 1)},
+		KeyDown:     valueChan{1, make(chan bool, 1)},
+		KeyLeft:     valueChan{1, make(chan bool, 1)},
+		KeyRight:    valueChan{1, make(chan bool, 1)},
+		KeyB:        valueChan{1, make(chan bool, 1)},
+		KeyA:        valueChan{1, make(chan bool, 1)},
+		KeySelect:   valueChan{1, make(chan bool, 1)},
+		KeyStart:    valueChan{1, make(chan bool, 1)},
 	}
 	mmuKeys := AddressKeys(0)
 	mmuKeys = mmu.LockAddr(AddrP1, mmuKeys)
@@ -96,6 +119,7 @@ func NewKeypad(mmu Mmu, runSetup bool) *Keypad {
 		mmuKeys:            mmuKeys,
 		keys:               keys,
 		runSetup:           runSetup,
+		quit:               make(chan struct{}),
 	}
 	cmdHandlers := map[Command]CommandFn{
 		CmdKeyDown:  kp.cmdKeyDown,
@@ -214,25 +238,12 @@ func (kp *Keypad) loopKeyboard() {
 	b := make([]byte, 1)
 	for {
 		os.Stdin.Read(b)
-		switch b[0] {
-		case 0x77: // w
-			kp.RunCommand(CmdKeyDown, KeyUp)
-		case 0x73: // s
-			kp.RunCommand(CmdKeyDown, KeyDown)
-		case 0x61: // a
-			kp.RunCommand(CmdKeyDown, KeyLeft)
-		case 0x64: // d
-			kp.RunCommand(CmdKeyDown, KeyRight)
-		case 0x2E: // .
-			kp.RunCommand(CmdKeyDown, KeyB)
-		case 0x2F: // /
-			kp.RunCommand(CmdKeyDown, KeyA)
-		case 0x5C: // \
-			kp.RunCommand(CmdKeyDown, KeySelect)
-		case 0x0A: // <enter>
-			kp.RunCommand(CmdKeyDown, KeyStart)
-		case 0x70: // p
-			panic("KeyPanic")
+		if b[0] == '\x1b' {
+			// Escape closes the quit channel to signal the main loop to exit.
+			close(kp.quit)
+			return
+		} else if key, ok := keyMap[b[0]]; ok {
+			kp.RunCommand(CmdKeyDown, key)
 		}
 	}
 }
