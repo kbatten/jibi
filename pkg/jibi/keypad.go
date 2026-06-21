@@ -2,7 +2,6 @@ package jibi
 
 import (
 	"os"
-	"os/exec"
 	"time"
 )
 
@@ -70,20 +69,7 @@ type Keypad struct {
 
 	ttyConfig string
 	runSetup  bool
-
-	stty stty
 }
-
-// hacky way to call stty correctly
-type stty uint8
-
-// List of 8 buttons.
-const (
-	sttyUnkown = iota
-	sttyLinux
-	sttyMacos
-)
-
 
 // NewKeypad returns a new Keypad object and starts up a goroutine.
 func NewKeypad(mmu Mmu, runSetup bool) *Keypad {
@@ -122,30 +108,6 @@ func NewKeypad(mmu Mmu, runSetup bool) *Keypad {
 	go kp.loopKeyboard()
 	mmu.SetKeypad(kp)
 	return kp
-}
-
-func (k *Keypad) Init() {
-	if k.runSetup == true {
-		// save tty config
-		out, err := exec.Command("stty", "-f", "/dev/tty", "-g").CombinedOutput()
-		if err != nil {
-			panic("stty")
-		}
-		// trim the trailing newline
-		k.ttyConfig = string(out[:len(out)-1])
-
-		// disable input buffering
-		exec.Command("stty", "-F", "/dev/tty", "cbreak", "min", "1").Run()
-		// do not display entered characters on the screen
-		exec.Command("stty", "-F", "/dev/tty", "-echo").Run()
-	}
-}
-
-func (k *Keypad) Close() {
-	if k.runSetup == true {
-		// restore tty config
-		exec.Command("stty", "-F", "/dev/tty", k.ttyConfig).Run()
-	}
 }
 
 func (k *Keypad) String() string {
