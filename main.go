@@ -12,7 +12,6 @@ import (
 
 func main() {
 	var config struct {
-		DevStatus     bool   `docopt:"--dev-status"`
 		DevMaxTicks   int    `docopt:"--dev-maxticks"`
 		DevLogInst    bool   `docopt:"--dev-loginstructions"`
 		DevCpuProfile bool   `docopt:"--dev-cpuprofile"`
@@ -21,7 +20,6 @@ func main() {
 
 	usage := `usage: jibi [options] <rom>
 dev options:
-  --dev-status           show 1 second status
   --dev-maxticks=TICKS   stop after a number of cpu ticks
   --dev-loginstructions  write jibi.log for every instruction
   --dev-cpuprofile       write cpu.prof for use with pprof`
