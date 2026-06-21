@@ -88,6 +88,8 @@ func (j Jibi) Run() {
 
 	for running := true; running; {
 		select {
+		case <-j.kp.Quit():
+			running = false
 		case s := <-instructions:
 			logFile.WriteString(s)
 			logFile.WriteString("\n")
