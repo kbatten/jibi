@@ -51,7 +51,6 @@ dev options:
 
 	// create jibi Options
 	options := jibi.Options{
-		Status:   config.DevStatus,
 		MaxTicks: config.DevMaxTicks,
 		LogInst:  config.DevLogInst,
 		Render:   true,
