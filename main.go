@@ -53,9 +53,6 @@ dev options:
 	options := jibi.Options{
 		MaxTicks: config.DevMaxTicks,
 		LogInst:  config.DevLogInst,
-		Render:   true,
-		Keypad:   true,
-		Squash:   true,
 	}
 
 	// create jibi and run
