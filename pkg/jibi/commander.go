@@ -117,9 +117,9 @@ func NewCommander(name string) *Commander {
 }
 
 // start creates the goroutine.
-func (c *Commander) start(state CommanderStateFn, handlerFns map[Command]CommandFn, clk chan ClockType) {
+func (c *Commander) start(state CommanderStateFn, handlerFns map[Command]CommandFn, clock chan ClockType) {
 	c.handlerFns = handlerFns
-	go c.loopCommander(state, clk)
+	go c.loopCommander(state, clock)
 }
 
 // yield gives the commander an opportunity to process any pending commands
@@ -152,7 +152,7 @@ func nilFunc(a int) int {
 	return a + a
 }
 
-func (c *Commander) loopCommander(state CommanderStateFn, clk chan ClockType) {
+func (c *Commander) loopCommander(state CommanderStateFn, clock chan ClockType) {
 	c.playing = false
 	c.running = true
 	first := true
@@ -162,8 +162,8 @@ func (c *Commander) loopCommander(state CommanderStateFn, clk chan ClockType) {
 	to := ClockType(0)
 	for c.running {
 		cmdr.cmd = CmdNil
-		for _, clk := range c.loopCounters {
-			clk.AddCycles(1)
+		for _, loopClock := range c.loopCounters {
+			loopClock.AddCycles(1)
 		}
 		if !c.playing || state == nil {
 			cmdr = <-c.c
@@ -176,12 +176,12 @@ func (c *Commander) loopCommander(state CommanderStateFn, clk chan ClockType) {
 			}
 			c.processCommand(cmdr)
 		} else if t < tnext {
-			if clk == nil {
+			if clock == nil {
 				panic(fmt.Sprintf("Commander %s requires a clock", c))
 			}
 			select {
 			case cmdr = <-c.c:
-			case to = <-clk:
+			case to = <-clock:
 				t += uint32(to)
 			}
 			c.processCommand(cmdr)
@@ -210,8 +210,8 @@ func (c *Commander) processCommands() {
 
 func (c *Commander) processCommand(cmdr CommandResponse) {
 	if cmdr.cmd != CmdNil {
-		for _, clk := range c.cmdCounters {
-			clk.AddCycles(1)
+		for _, clock := range c.cmdCounters {
+			clock.AddCycles(1)
 		}
 		if cmdr.cmd == CmdPlay {
 			c.playing = true
@@ -238,28 +238,6 @@ func (c *Commander) processCommand(cmdr CommandResponse) {
 		}
 	}
 }
-
-/*
-func (c *Commander) cmdCmdCounter(resp interface{}) {
-	if resp, ok := resp.(chan chan ClockType); !ok {
-		panic("invalid command response type")
-	} else {
-		clk := make(chan ClockType, 1)
-		c.cmdCounters = append(c.cmdCounters, NewClock(clk))
-		resp <- clk
-	}
-}
-
-func (c *Commander) cmdLoopCounter(resp interface{}) {
-	if resp, ok := resp.(chan chan ClockType); !ok {
-		panic("invalid command response type")
-	} else {
-		clk := make(chan ClockType, 1)
-		c.loopCounters = append(c.loopCounters, NewClock(clk))
-		resp <- clk
-	}
-}
-*/
 
 func (c *Commander) play() {
 	c.playing = true
