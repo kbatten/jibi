@@ -57,16 +57,16 @@ func (k Key) String() string {
 
 // keyMap holds the mapping from raw byte (ASCII) to Game Boy Key.
 var keyMap = map[byte]Key{
-	'\x1b':  KeyQuit,
-	'w':     KeyUp,
-	's':     KeyDown,
-	'a':     KeyLeft,
-	'd':     KeyRight,
-	'.':     KeyB,
-	'/':     KeyA,
-	'\\':    KeySelect,
-	'\n':    KeyStart,
-	'\r':    KeyStart,
+	'\x1b': KeyQuit,
+	'w':    KeyUp,
+	's':    KeyDown,
+	'a':    KeyLeft,
+	'd':    KeyRight,
+	'.':    KeyB,
+	'/':    KeyA,
+	'\\':   KeySelect,
+	'\n':   KeyStart,
+	'\r':   KeyStart,
 }
 
 type valueChan struct {
@@ -78,15 +78,13 @@ type valueChan struct {
 type Keypad struct {
 	CommanderInterface
 
-	mmu     Mmu
-	mmuKeys AddressKeys
+	mmu Mmu
 
 	p1013low bool
 
 	keys map[Key]valueChan
 
 	ttyConfig string
-	runSetup  bool
 
 	// quit is closed when the escape key is pressed.
 	quit chan struct{}
@@ -98,27 +96,23 @@ func (k *Keypad) Quit() chan struct{} {
 }
 
 // NewKeypad returns a new Keypad object and starts up a goroutine.
-func NewKeypad(mmu Mmu, runSetup bool) *Keypad {
+func NewKeypad(mmu Mmu) *Keypad {
 	commander := NewCommander("keypad")
 	keys := map[Key]valueChan{
-		KeyQuit:     valueChan{1, make(chan bool, 1)},
-		KeyUp:       valueChan{1, make(chan bool, 1)},
-		KeyDown:     valueChan{1, make(chan bool, 1)},
-		KeyLeft:     valueChan{1, make(chan bool, 1)},
-		KeyRight:    valueChan{1, make(chan bool, 1)},
-		KeyB:        valueChan{1, make(chan bool, 1)},
-		KeyA:        valueChan{1, make(chan bool, 1)},
-		KeySelect:   valueChan{1, make(chan bool, 1)},
-		KeyStart:    valueChan{1, make(chan bool, 1)},
+		KeyQuit:   valueChan{1, make(chan bool, 1)},
+		KeyUp:     valueChan{1, make(chan bool, 1)},
+		KeyDown:   valueChan{1, make(chan bool, 1)},
+		KeyLeft:   valueChan{1, make(chan bool, 1)},
+		KeyRight:  valueChan{1, make(chan bool, 1)},
+		KeyB:      valueChan{1, make(chan bool, 1)},
+		KeyA:      valueChan{1, make(chan bool, 1)},
+		KeySelect: valueChan{1, make(chan bool, 1)},
+		KeyStart:  valueChan{1, make(chan bool, 1)},
 	}
-	mmuKeys := AddressKeys(0)
-	mmuKeys = mmu.LockAddr(AddrP1, mmuKeys)
 	kp := &Keypad{
 		CommanderInterface: commander,
 		mmu:                mmu,
-		mmuKeys:            mmuKeys,
 		keys:               keys,
-		runSetup:           runSetup,
 		quit:               make(chan struct{}),
 	}
 	cmdHandlers := map[Command]CommandFn{
@@ -191,7 +185,7 @@ func (k *Keypad) cmdKeyDown(data interface{}) {
 				}
 				k.RunCommand(CmdKeyUp, data)
 			}()
-			k.mmu.SetInterrupt(InterruptKeypad, k.mmuKeys)
+			k.mmu.SetInterrupt(InterruptKeypad)
 		} else {
 			// this chan has a buffer of 1, so even though the write is
 			// non-blocking one keypress can be queued.
@@ -212,7 +206,7 @@ func (k *Keypad) cmdKeyUp(data interface{}) {
 }
 
 func (k *Keypad) cmdKeyCheck(data interface{}) {
-	b, _ := k.mmu.ReadIoByte(AddrP1, k.mmuKeys)
+	b := k.mmu.ReadIoByte(AddrP1)
 	p15 := (b & 0x20) >> 5
 	p14 := (b & 0x10) >> 4
 
@@ -227,11 +221,11 @@ func (k *Keypad) cmdKeyCheck(data interface{}) {
 }
 
 func (kp *Keypad) readByte(addr Word) Byte {
-	return kp.mmu.ReadByteAt(addr, kp.mmuKeys)
+	return kp.mmu.ReadByteAt(addr)
 }
 
 func (kp *Keypad) writeByte(addr Word, b Byte) {
-	kp.mmu.WriteByteAt(addr, b, kp.mmuKeys)
+	kp.mmu.WriteByteAt(addr, b)
 }
 
 func (kp *Keypad) loopKeyboard() {
