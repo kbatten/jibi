@@ -5,18 +5,15 @@ import ()
 // A Gpu is the graphics processing unit. It handles drawing the background,
 // window and sprites. It also triggers interrutps.
 type Gpu struct {
-	CommanderInterface
-
 	// 0x0000-0x07FF tile set 1 0-127
 	// 0x0800-0x0FFF tile set 1 128-255, set 0 (-1)-(-128)
 	// 0x1000-0x17FF tile set 0 0-127
 	// 0x1800-0x1BFF tile map 0
 	// 0x1C00-0x1FFF tile map 1
 
-	mmu     Mmu
-	mmuKeys AddressKeys
-	lcd     Lcd
-	clock   chan ClockType
+	mmu   Mmu
+	lcd   Lcd
+	clock chan ClockType
 
 	bgBuffer []Byte // 256x256 background 2bit bitmap buffer
 	fgBuffer []Byte // 144x160 foreground 2bit bitmap buffer
@@ -27,39 +24,22 @@ type Gpu struct {
 
 // NewGpu creates a Gpu and starts a goroutine.
 func NewGpu(mmu Mmu, lcd Lcd, clock chan ClockType) *Gpu {
-	commander := NewCommander("gpu")
-	gpu := &Gpu{CommanderInterface: commander,
+	gpu := &Gpu{
 		mmu: mmu, lcd: lcd, clock: clock,
 		bgBuffer: make([]Byte, 256*256),
 		fgBuffer: make([]Byte, int(lcdWidth)*int(lcdHeight)),
 	}
-	cmdHandlers := map[Command]CommandFn{
-		CmdFrameCounter: gpu.cmdFrameCounter,
-	}
-	commander.start(gpu.stateScanlineOam, cmdHandlers, clock)
+	go gpu.spin()
 	mmu.SetGpu(gpu)
 	return gpu
 }
 
-func (g *Gpu) cmdFrameCounter(resp interface{}) {
-	panic("cmdFrameCounter")
-	/*
-		if resp, ok := resp.(chan chan ClockType); !ok {
-			panic("invalid command response type")
-		} else {
-			clock := make(chan ClockType, 1)
-			g.frameCounters = append(g.frameCounters, NewClock(clock))
-			resp <- clock
-		}
-	*/
-}
-
 func (g *Gpu) readByte(addr Word) Byte {
-	return g.mmu.ReadByteAt(addr, g.mmuKeys)
+	return g.mmu.ReadByteAt(addr)
 }
 
 func (g *Gpu) writeByte(addr Word, b Byte) {
-	g.mmu.WriteByteAt(addr, b, g.mmuKeys)
+	g.mmu.WriteByteAt(addr, b)
 }
 
 /*
@@ -82,6 +62,7 @@ func paintTile(frameBuffer []Byte, tileData []Byte, x, y uint8, above, xflip, yf
 	}
 }
 */
+
 func (g *Gpu) generateLine(line Byte) []Byte {
 	// get background
 	// TODO: bg wraps to the same X, not to X+1, same with Y
@@ -266,9 +247,6 @@ func byteToPalette(p Byte) []Byte {
 }
 
 func (g *Gpu) generateFrame() {
-	g.lockAddr(AddrVRam) // TODO: this should be in scanline vram
-	defer g.unlockAddr(AddrVRam)
-
 	// clear foreground buffer
 	for i := range g.fgBuffer {
 		g.fgBuffer[i] = 0
@@ -319,59 +297,15 @@ func (g *Gpu) generateFrame() {
 
 	// draw sprites (oam)
 	if objDisplay {
-		g.lockAddr(AddrOam) // TODO: this should be in scanline oam
 		sprites := g.getSprites(objSpriteSize)
-		g.unlockAddr(AddrOam)
 		for _, spr := range sprites {
 			spr.Paint(g.fgBuffer)
 		}
 	}
-	/*
-		// draw sprites (oam)
-		if objDisplay {
-			addrTileset := Word(0x8000)
-			oamaddr := Word(0xFE00)
-			spriteSize := Word(16)
-			if bgSpriteSize == 1 {
-				spriteSize = 32
-			}
-			tileData := make([]Byte, spriteSize)
-
-			for sprite := Word(0x0000); sprite < 0x00A0; sprite += 4 {
-				x := uint8(g.readByte(oamaddr+sprite) - 8)
-				y := uint8(g.readByte(oamaddr+sprite+1) - 16)
-				tile := g.readByte(oamaddr + sprite + 2)
-				if bgSpriteSize == 1 {
-					tile = tile & 0xEF
-				}
-				attr := g.readByte(oamaddr + sprite + 3)
-				above := attr&0x80 == 0
-				yflip := attr&0x40 == 0x80
-				xflip := attr&0x20 == 0x40
-				palette := attr & 0x10 >> 1
-				ind := addrTileset + Word(tile)*spriteSize
-				for j := Word(0); j < spriteSize; j++ {
-					tileData[j] = g.readByte(ind + j)
-				}
-				paintTile(g.frameBuffer, tileData, x, y, above, xflip, yflip, palette)
-			}
-		}
-	*/
-}
-
-func (g *Gpu) lockAddr(addr Word) {
-	g.mmuKeys = g.mmu.LockAddr(addr, g.mmuKeys)
-}
-
-func (g *Gpu) unlockAddr(addr Word) {
-	g.mmuKeys = g.mmu.UnlockAddr(addr, g.mmuKeys)
 }
 
 func (g *Gpu) stateScanlineOam(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
-	g.lockAddr(AddrGpuRegs)
-	defer g.unlockAddr(AddrGpuRegs)
 	if first {
-		//g.lockAddr(AddrOam)
 		stat := g.readByte(AddrSTAT)
 		stat = stat&0x7C | 0x2 // mode 2
 		ly := g.readByte(AddrLY)
@@ -383,22 +317,18 @@ func (g *Gpu) stateScanlineOam(first bool, t uint32) (CommanderStateFn, bool, ui
 		}
 		g.writeByte(AddrSTAT, stat)
 		if (ly == lyc) && (stat&(0x40|0x20) == (0x40 | 0x20)) { // lyc=ly and mode 2
-			g.mmu.SetInterrupt(InterruptLCDC, g.mmuKeys)
+			g.mmu.SetInterrupt(InterruptLCDC)
 		}
 	}
 	if t >= 80 {
 		t -= 80
-		//g.unlockAddr(AddrOam)
 		return g.stateScanlineVram, true, t, 172
 	}
 	return g.stateScanlineOam, false, t, 80
 }
 
 func (g *Gpu) stateScanlineVram(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
-	g.lockAddr(AddrGpuRegs)
-	defer g.unlockAddr(AddrGpuRegs)
 	if first {
-		//g.lockAddr(AddrVRam)
 		stat := g.readByte(AddrSTAT)
 		stat = stat&0x7C | 0x3 // mode 3
 		g.writeByte(AddrSTAT, stat)
@@ -407,7 +337,6 @@ func (g *Gpu) stateScanlineVram(first bool, t uint32) (CommanderStateFn, bool, u
 	}
 	if t >= 172 {
 		t -= 172
-		//g.unlockAddr(AddrVRam)
 		return g.stateHblank, true, t, 204
 	}
 	if !first {
@@ -417,8 +346,6 @@ func (g *Gpu) stateScanlineVram(first bool, t uint32) (CommanderStateFn, bool, u
 }
 
 func (g *Gpu) stateHblank(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
-	g.lockAddr(AddrGpuRegs)
-	defer g.unlockAddr(AddrGpuRegs)
 	if first {
 		stat := g.readByte(AddrSTAT)
 		stat = stat&0x7C | 0x1 // mode 1
@@ -431,14 +358,14 @@ func (g *Gpu) stateHblank(first bool, t uint32) (CommanderStateFn, bool, uint32,
 		}
 		g.writeByte(AddrSTAT, stat)
 		if (ly == lyc) && (stat&(0x40|0x10) == (0x40 | 0x10)) { // lyc=ly and mode 1
-			g.mmu.SetInterrupt(InterruptLCDC, g.mmuKeys)
+			g.mmu.SetInterrupt(InterruptLCDC)
 		}
 	}
 	if t >= 204 {
 		t -= 204
 		ly := g.readByte(AddrLY)
 		ly++
-		g.mmu.WriteByteAt(AddrLY, ly, g.mmuKeys|AddressKeys(abElevated))
+		g.mmu.WriteElevatedByteAt(AddrLY, ly)
 		if ly == lcdHeight-1 {
 			return g.stateVblank, true, t, 456
 		}
@@ -451,8 +378,6 @@ func (g *Gpu) stateHblank(first bool, t uint32) (CommanderStateFn, bool, uint32,
 }
 
 func (g *Gpu) stateVblank(first bool, t uint32) (CommanderStateFn, bool, uint32, uint32) {
-	g.lockAddr(AddrGpuRegs)
-	defer g.unlockAddr(AddrGpuRegs)
 	if first {
 		stat := g.readByte(AddrSTAT)
 		stat = stat&0x7C | 0x0 // mode 0
@@ -465,9 +390,9 @@ func (g *Gpu) stateVblank(first bool, t uint32) (CommanderStateFn, bool, uint32,
 		}
 		g.writeByte(AddrSTAT, stat)
 		if (ly == lyc) && (stat&(0x40|0x04) == (0x40 | 0x04)) { // lyc=ly and mode 0
-			g.mmu.SetInterrupt(InterruptLCDC, g.mmuKeys)
+			g.mmu.SetInterrupt(InterruptLCDC)
 		}
-		g.mmu.SetInterrupt(InterruptVblank, g.mmuKeys)
+		g.mmu.SetInterrupt(InterruptVblank)
 		g.lcd.Blank()
 		g.generateFrame()
 		for _, clock := range g.frameCounters {
@@ -480,14 +405,32 @@ func (g *Gpu) stateVblank(first bool, t uint32) (CommanderStateFn, bool, uint32,
 		ly++
 		if ly > lcdHeight-1+10 {
 			ly = 0
-			g.mmu.WriteByteAt(AddrLY, ly, g.mmuKeys|AddressKeys(abElevated))
+			g.mmu.WriteElevatedByteAt(AddrLY, ly)
 			return g.stateScanlineOam, true, t, 80
 		}
-		g.mmu.WriteByteAt(AddrLY, ly, g.mmuKeys|AddressKeys(abElevated))
+		g.mmu.WriteElevatedByteAt(AddrLY, ly)
 		return g.stateVblank, false, t, 456
 	}
 	if !first {
 		panic("wasted gpu cycle")
 	}
 	return g.stateVblank, false, t, 456
+}
+
+func (g *Gpu) spin() {
+	state := g.stateScanlineOam
+	first := true
+
+	tAvailable := uint32(0)
+	tNext := uint32(0)
+	var t ClockType
+	for {
+		select {
+		case t = <-g.clock:
+			tAvailable += uint32(t)
+			for first || tAvailable >= tNext {
+				state, first, tAvailable, tNext = state(first, tAvailable)
+			}
+		}
+	}
 }
