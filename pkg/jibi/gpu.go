@@ -16,7 +16,7 @@ type Gpu struct {
 	mmu     Mmu
 	mmuKeys AddressKeys
 	lcd     Lcd
-	clk     chan ClockType
+	clock   chan ClockType
 
 	bgBuffer []Byte // 256x256 background 2bit bitmap buffer
 	fgBuffer []Byte // 144x160 foreground 2bit bitmap buffer
@@ -26,17 +26,17 @@ type Gpu struct {
 }
 
 // NewGpu creates a Gpu and starts a goroutine.
-func NewGpu(mmu Mmu, lcd Lcd, clk chan ClockType) *Gpu {
+func NewGpu(mmu Mmu, lcd Lcd, clock chan ClockType) *Gpu {
 	commander := NewCommander("gpu")
 	gpu := &Gpu{CommanderInterface: commander,
-		mmu: mmu, lcd: lcd, clk: clk,
+		mmu: mmu, lcd: lcd, clock: clock,
 		bgBuffer: make([]Byte, 256*256),
 		fgBuffer: make([]Byte, int(lcdWidth)*int(lcdHeight)),
 	}
 	cmdHandlers := map[Command]CommandFn{
 		CmdFrameCounter: gpu.cmdFrameCounter,
 	}
-	commander.start(gpu.stateScanlineOam, cmdHandlers, clk)
+	commander.start(gpu.stateScanlineOam, cmdHandlers, clock)
 	mmu.SetGpu(gpu)
 	return gpu
 }
@@ -47,9 +47,9 @@ func (g *Gpu) cmdFrameCounter(resp interface{}) {
 		if resp, ok := resp.(chan chan ClockType); !ok {
 			panic("invalid command response type")
 		} else {
-			clk := make(chan ClockType, 1)
-			g.frameCounters = append(g.frameCounters, NewClock(clk))
-			resp <- clk
+			clock := make(chan ClockType, 1)
+			g.frameCounters = append(g.frameCounters, NewClock(clock))
+			resp <- clock
 		}
 	*/
 }
@@ -470,8 +470,8 @@ func (g *Gpu) stateVblank(first bool, t uint32) (CommanderStateFn, bool, uint32,
 		g.mmu.SetInterrupt(InterruptVblank, g.mmuKeys)
 		g.lcd.Blank()
 		g.generateFrame()
-		for _, clk := range g.frameCounters {
-			clk.AddCycles(1)
+		for _, clock := range g.frameCounters {
+			clock.AddCycles(1)
 		}
 	}
 	if t >= 456 {

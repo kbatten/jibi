@@ -101,7 +101,6 @@ func NewCpu(mmu Mmu, bios []Byte) *Cpu {
 		hz:           hz, period: period,
 	}
 	cmdHandlers := map[Command]CommandFn{
-		CmdClockAccumulator: cpu.cmdClock,
 		CmdString:           cpu.cmdString,
 		CmdOnInstruction:    cpu.cmdOnInstruction,
 	}
@@ -122,19 +121,6 @@ func (c *Cpu) AttachInstructions() chan string {
 	c.notifyInst = append(c.notifyInst, inst)
 	return inst
 
-}
-
-func (c *Cpu) cmdClock(resp interface{}) {
-	panic("cmdClock") // possibly return c.clock.Attach()
-	/*
-		if resp, ok := resp.(chan chan ClockType); !ok {
-			panic("invalid command response type")
-		} else {
-			clk := make(chan ClockType, 1)
-			c.tClocks = append(c.tClocks, NewClock(clk))
-			resp <- clk
-		}
-	*/
 }
 
 func (c *Cpu) cmdOnInstruction(resp interface{}) {
@@ -218,16 +204,6 @@ func (c *Cpu) writeWord(addr Word, w Word) {
 	c.writeByte(addr, w.Low())
 	c.writeByte(addr+1, w.High())
 }
-
-// Clock returns a new channel that holds acumulating clock ticks.
-/*
-func (c *Cpu) Clock() chan ClockType {
-	panic("Clock")
-	resp := make(chan chan ClockType)
-	c.RunCommand(CmdClockAccumulator, resp)
-	return <-resp
-}
-*/
 
 func (c *Cpu) fetch() {
 	op := opcode(c.readByte(c.pc))

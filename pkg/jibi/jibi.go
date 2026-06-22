@@ -67,9 +67,9 @@ func (j Jibi) Run() {
 	j.lcd.Init()
 	defer j.lcd.Close()
 
-	var totalTicksClk chan ClockType
+	var totalTicksClock chan ClockType
 	if j.O.MaxTicks > 0 {
-		totalTicksClk = j.cpu.AttachClock()
+		totalTicksClock = j.cpu.AttachClock()
 	}
 	totalTicks := int(0)
 
@@ -93,7 +93,7 @@ func (j Jibi) Run() {
 		case s := <-instructions:
 			logFile.WriteString(s)
 			logFile.WriteString("\n")
-		case t := <-totalTicksClk:
+		case t := <-totalTicksClock:
 			totalTicks += int(t)
 			if totalTicks > j.O.MaxTicks {
 				running = false
