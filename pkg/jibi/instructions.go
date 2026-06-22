@@ -27,7 +27,7 @@ func (i instruction) String() string {
 // z reset
 // n reset
 // h and c set or reset according to operation
-func (c *Cpu) addWordR(a Word, b Byte) Word {
+func (c *Cpu) addWord(a Word, b Byte) Word {
 	sum := a + Word(b)
 	// check half carry
 	if (a&0xFF)+Word(b) > 0xFF {
@@ -43,6 +43,21 @@ func (c *Cpu) addWordR(a Word, b Byte) Word {
 	return sum
 }
 
+func (c *Cpu) addWords(a Word, b Word) Word {
+	panic("untested")
+	sum := a + b
+	if a&0x0FFF+b&0x0FFF > 0x0FFF {
+		c.f.setFlag(flagH)
+	}
+	if uint32(a)+uint32(b) > 0xFFFF {
+		c.f.setFlag(flagC)
+	}
+	// reset other flags
+	c.f.resetFlag(flagN)
+	return sum
+}
+
+// test if a bit is set
 func (c *Cpu) bit(b uint8, n Byte) {
 	set := 1<<b&n == 1<<b
 	if !set {
@@ -233,6 +248,14 @@ func (c *Cpu) rlc(n Byte) Byte {
 	return Byte(r)
 }
 
+func (c *Cpu) jr(n int8) {
+	if n < 0 {
+		c.pc -= register16(-n)
+		return
+	}
+	c.pc += register16(n)
+}
+
 func (c *Cpu) jrF(f Byte, n int8) {
 	if c.f.getFlag(f) == true {
 		c.jr(n)
@@ -245,27 +268,31 @@ func (c *Cpu) jrNF(f Byte, n int8) {
 	}
 }
 
-func (c *Cpu) jr(n int8) {
-	if n < 0 {
-		c.pc -= register16(-n)
-		return
-	}
-	c.pc += register16(n)
-}
-
 func (c *Cpu) jp(addr Word) {
 	c.pc = register16(addr)
 }
 
-func (c *Cpu) callF(f Byte, addr Word) {
+func (c *Cpu) jpF(f Byte, addr Word) {
 	if c.f.getFlag(f) == true {
-		c.call(addr)
+		c.jp(addr)
+	}
+}
+
+func (c *Cpu) jpNF(f Byte, addr Word) {
+	if c.f.getFlag(f) == false {
+		c.jp(addr)
 	}
 }
 
 func (c *Cpu) call(addr Word) {
 	c.push(c.pc)
 	c.jp(addr)
+}
+
+func (c *Cpu) callF(f Byte, addr Word) {
+	if c.f.getFlag(f) == true {
+		c.call(addr)
+	}
 }
 
 func (c *Cpu) pop() Word {
