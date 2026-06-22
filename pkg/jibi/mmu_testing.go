@@ -8,24 +8,29 @@ func newTestMmu() Mmu {
 	return TestMmu{make([]Byte, 0x10000)}
 }
 
-func (tm TestMmu) LockAddr(addr Word, ak AddressKeys) AddressKeys {
-	return AddressKeys(0)
-}
-
-func (tm TestMmu) UnlockAddr(addr Word, ak AddressKeys) AddressKeys {
-	return AddressKeys(0)
-}
-
-func (tm TestMmu) ReadByteAt(addr Word, ak AddressKeys) Byte {
+func (tm TestMmu) ReadByteAt(addr Word) Byte {
 	return tm.ram[addr]
 }
 
-func (tm TestMmu) WriteByteAt(addr Word, b Byte, ak AddressKeys) {
+func (tm TestMmu) WriteByteAt(addr Word, b Byte) {
 	tm.ram[addr] = b
 }
 
-func (tm TestMmu) ReadIoByte(addr Word, ak AddressKeys) (Byte, bool) {
-	return tm.ram[addr], true
+func (tm TestMmu) WriteElevatedByteAt(addr Word, b Byte) {
+	tm.ram[addr] = b
+}
+
+func (tm TestMmu) ReadWordAt(addr Word) Word {
+	return BytesToWord(tm.ReadByteAt(addr+1), tm.ReadByteAt(addr))
+}
+
+func (tm TestMmu) WriteWordAt(addr, w Word) {
+	tm.WriteByteAt(addr+1, w.High())
+	tm.WriteByteAt(addr, w.Low())
+}
+
+func (tm TestMmu) ReadIoByte(addr Word) Byte {
+	return tm.ram[addr]
 }
 
 func (tm TestMmu) SetGpu(gpu *Gpu) {
@@ -34,5 +39,8 @@ func (tm TestMmu) SetGpu(gpu *Gpu) {
 func (tm TestMmu) SetKeypad(kp *Keypad) {
 }
 
-func (tm TestMmu) SetInterrupt(in Interrupt, ak AddressKeys) {
+func (tm TestMmu) SetInterrupt(in Interrupt) {
+}
+
+func (tm TestMmu) ResetInterrupt(in Interrupt) {
 }
