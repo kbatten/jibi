@@ -341,6 +341,37 @@ func TestOp11(t *testing.T) {
 	}
 }
 
+func TestOp13(t *testing.T) {
+	cpu := NewCpu(newTestMmu(), []Byte{0x13})
+
+	// INC DE
+	cpu.pc = 0
+	cpu.d.setWord(0x1FFE)
+	cpu.fetch()
+	cpu.execute()
+	if cpu.d.Word() != Word(0x1FFF) {
+		t.Error()
+	}
+
+	// INC DE -- carry
+	cpu.pc = 0
+	cpu.d.setWord(0x1FFF)
+	cpu.fetch()
+	cpu.execute()
+	if cpu.d.Word() != Word(0x2000) {
+		t.Error()
+	}
+
+	// INC DE -- overflow
+	cpu.pc = 0
+	cpu.d.setWord(0xFFFF)
+	cpu.fetch()
+	cpu.execute()
+	if cpu.d.Word() != Word(0x0000) {
+		t.Error()
+	}
+}
+
 func TestOp17(t *testing.T) {
 	cpu := NewCpu(newTestMmu(), []Byte{0x17})
 
@@ -476,37 +507,6 @@ func TestOp17(t *testing.T) {
 	}
 }
 
-func TestOp13(t *testing.T) {
-	cpu := NewCpu(newTestMmu(), []Byte{0x13})
-
-	// INC DE
-	cpu.pc = 0
-	cpu.d.setWord(0x1FFE)
-	cpu.fetch()
-	cpu.execute()
-	if cpu.d.Word() != Word(0x1FFF) {
-		t.Error()
-	}
-
-	// INC DE -- carry
-	cpu.pc = 0
-	cpu.d.setWord(0x1FFF)
-	cpu.fetch()
-	cpu.execute()
-	if cpu.d.Word() != Word(0x2000) {
-		t.Error()
-	}
-
-	// INC DE -- overflow
-	cpu.pc = 0
-	cpu.d.setWord(0xFFFF)
-	cpu.fetch()
-	cpu.execute()
-	if cpu.d.Word() != Word(0x0000) {
-		t.Error()
-	}
-}
-
 func TestOp18(t *testing.T) {
 	cpu := NewCpu(newTestMmu(), []Byte{0x00, 0x00, 0x00, 0x00, 0x18, 0x05, 0x18, 0xFC})
 
@@ -557,18 +557,18 @@ func TestOp20(t *testing.T) {
 	cpu.f.resetFlag(flagZ)
 	cpu.fetch()
 	cpu.execute()
-	if cpu.pc != Word(0x05) {
+	if cpu.pc != Word(0x07) {
 		t.Error()
 	}
 
-	// JNZ, negative offset
+	// NZ, negative offset
 	cpu = NewCpu(newTestMmu(), []Byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0xFC})
-	cpu.pc = 0x07
+	cpu.pc = 0x06
 	cpu.f.resetFlag(flagZ)
 	cpu.fetch()
 	cpu.execute()
-	if cpu.pc != Word(0x03) {
-		t.Error()
+	if cpu.pc != Word(0x04) {
+		t.Error(cpu.pc)
 	}
 }
 
